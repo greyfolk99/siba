@@ -19,8 +19,9 @@ import (
 const escapePlaceholder = "\x00SIBA_ESCAPE\x00"
 
 var (
-	escapeRefRe = regexp.MustCompile(`\\\{\{([^}]+)\}\}`)
-	refRe       = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+	escapeRefRe     = regexp.MustCompile(`\\\{\{([^}]+)\}\}`)
+	refRe           = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+	refDirectiveRe  = regexp.MustCompile(`<!--\s*@(\w+)\s*(.*?)\s*-->`)
 )
 
 // EvalContext tracks what is currently being evaluated to detect cycles at runtime.

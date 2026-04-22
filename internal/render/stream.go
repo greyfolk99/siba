@@ -1,0 +1,357 @@
+package render
+
+import (
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/hjseo/siba/internal/ast"
+	"github.com/hjseo/siba/internal/control"
+	"github.com/hjseo/siba/internal/parser"
+	"github.com/hjseo/siba/internal/scope"
+	"github.com/hjseo/siba/internal/template"
+	"github.com/hjseo/siba/internal/workspace"
+)
+
+// StreamRender renders a document line-by-line to an io.Writer.
+// Phase 1: scan directives (hoisting)
+// Phase 2: line-by-line streaming interpreter
+func StreamRender(doc *ast.Document, w io.Writer, ws *workspace.Workspace) error {
+	ctx := NewEvalContext()
+	return StreamRenderWithContext(doc, w, ctx, ws)
+}
+
+// StreamRenderWithContext renders with a shared eval context for cross-doc cycle detection.
+func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, ws *workspace.Workspace) error {
+	// Cycle detection
+	docKey := "doc:" + doc.Path
+	if doc.Name != "" {
+		docKey = "doc:" + doc.Name
+	}
+	if err := ctx.Enter(docKey); err != nil {
+		return err
+	}
+	defer ctx.Leave(docKey)
+
+	// Apply template inheritance
+	if ws != nil && doc.ExtendsName != "" {
+		tmplDoc := ws.GetTemplate(doc.ExtendsName)
+		if tmplDoc != nil {
+			doc.Variables = template.InheritVariables(doc, tmplDoc)
+			doc.Headings = template.MergeHeadings(doc, tmplDoc)
+		}
+	}
+
+	// Phase 1: Build scope tree (hoists variables to correct scopes)
+	rootScope, _ := scope.BuildScopeTree(doc)
+
+	// Phase 2: Line-by-line streaming
+	lines := strings.Split(doc.Source, "\n")
+	interp := &interpreter{
+		lines:     lines,
+		rootScope: rootScope,
+		doc:       doc,
+		ctx:       ctx,
+		ws:        ws,
+		writer:    w,
+	}
+
+	return interp.run()
+}
+
+// interpreter is the line-by-line streaming render engine.
+type interpreter struct {
+	lines     []string
+	rootScope *scope.Scope
+	doc       *ast.Document
+	ctx       *EvalContext
+	ws        *workspace.Workspace
+	writer    io.Writer
+	pos       int // current line index (0-based)
+}
+
+func (ip *interpreter) run() error {
+	for ip.pos < len(ip.lines) {
+		line := ip.lines[ip.pos]
+		trimmed := strings.TrimSpace(line)
+
+		// Directive line — check for control flow
+		if parser.IsDirectiveLine(line) {
+			if err := ip.handleDirective(trimmed); err != nil {
+				return err
+			}
+			ip.pos++
+			continue
+		}
+
+		// Check multi-line directive start
+		if strings.Contains(trimmed, "<!--") && strings.Contains(trimmed, "@") && !strings.Contains(trimmed, "-->") {
+			// skip multi-line directive
+			ip.pos++
+			for ip.pos < len(ip.lines) {
+				if strings.Contains(ip.lines[ip.pos], "-->") {
+					ip.pos++
+					break
+				}
+				ip.pos++
+			}
+			continue
+		}
+
+		// Normal text line — substitute variables and write
+		lineNo := ip.pos + 1
+		currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+		processed := ip.substituteVars(line, currentScope)
+		if err := ip.writeLine(processed); err != nil {
+			return err
+		}
+		ip.pos++
+	}
+	return nil
+}
+
+func (ip *interpreter) handleDirective(trimmed string) error {
+	// Parse to check if it's @if or @for
+	matches := directiveCheckRe.FindStringSubmatch(trimmed)
+	if matches == nil {
+		// Not a recognized control directive — just skip (strip)
+		return nil
+	}
+
+	keyword := matches[1]
+
+	switch keyword {
+	case "if":
+		return ip.handleIf(matches[2])
+	case "for":
+		return ip.handleFor(matches[2])
+	default:
+		// Other directives (@doc, @const, etc.) are stripped
+		return nil
+	}
+}
+
+func (ip *interpreter) handleIf(condition string) error {
+	lineNo := ip.pos + 1
+	currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+
+	result, _ := control.EvaluateIf(condition, currentScope)
+
+	if result {
+		// true — process lines until @endif, outputting them
+		ip.pos++
+		return ip.processUntilEnd("endif")
+	}
+	// false — skip until @endif
+	ip.pos++
+	ip.skipUntilEnd("endif")
+	return nil
+}
+
+func (ip *interpreter) handleFor(args string) error {
+	lineNo := ip.pos + 1
+	currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+
+	// Parse "iterator in collection"
+	parts := strings.SplitN(strings.TrimSpace(args), " in ", 2)
+	if len(parts) != 2 {
+		ip.pos++
+		ip.skipUntilEnd("endfor")
+		return nil
+	}
+	iterName := strings.TrimSpace(parts[0])
+	collName := strings.TrimSpace(parts[1])
+
+	iterations, _ := control.EvaluateFor(iterName, collName, currentScope)
+
+	// Collect block lines
+	ip.pos++
+	blockStart := ip.pos
+	ip.skipUntilEnd("endfor")
+	blockEnd := ip.pos - 1 // line before @endfor
+
+	blockLines := ip.lines[blockStart:blockEnd]
+
+	// Replay block for each iteration
+	for _, iter := range iterations {
+		for _, bline := range blockLines {
+			if parser.IsDirectiveLine(bline) {
+				continue // strip inner directives
+			}
+			processed := ip.substituteForLine(bline, iter, iterName)
+			if err := ip.writeLine(processed); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// processUntilEnd processes and outputs lines until @end{keyword}
+func (ip *interpreter) processUntilEnd(endKeyword string) error {
+	depth := 1
+	for ip.pos < len(ip.lines) {
+		line := ip.lines[ip.pos]
+		trimmed := strings.TrimSpace(line)
+
+		if parser.IsDirectiveLine(line) {
+			matches := directiveCheckRe.FindStringSubmatch(trimmed)
+			if matches != nil {
+				kw := matches[1]
+				if kw == "if" || kw == "for" {
+					depth++
+				}
+				if kw == endKeyword {
+					depth--
+					if depth == 0 {
+						return nil
+					}
+				}
+				// handle nested @if/@for
+				if kw == "if" {
+					if err := ip.handleIf(matches[2]); err != nil {
+						return err
+					}
+					ip.pos++
+					continue
+				}
+				if kw == "for" {
+					if err := ip.handleFor(matches[2]); err != nil {
+						return err
+					}
+					ip.pos++
+					continue
+				}
+			}
+			ip.pos++
+			continue
+		}
+
+		lineNo := ip.pos + 1
+		currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+		processed := ip.substituteVars(line, currentScope)
+		if err := ip.writeLine(processed); err != nil {
+			return err
+		}
+		ip.pos++
+	}
+	return nil
+}
+
+// skipUntilEnd skips lines until @end{keyword}, respecting nesting
+func (ip *interpreter) skipUntilEnd(endKeyword string) {
+	depth := 1
+	startKw := "if"
+	if endKeyword == "endfor" {
+		startKw = "for"
+	}
+	for ip.pos < len(ip.lines) {
+		trimmed := strings.TrimSpace(ip.lines[ip.pos])
+		if parser.IsDirectiveLine(ip.lines[ip.pos]) {
+			matches := directiveCheckRe.FindStringSubmatch(trimmed)
+			if matches != nil {
+				if matches[1] == startKw {
+					depth++
+				}
+				if matches[1] == endKeyword {
+					depth--
+					if depth == 0 {
+						return
+					}
+				}
+			}
+		}
+		ip.pos++
+	}
+}
+
+func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) string {
+	// protect escapes
+	line = protectEscapes(line)
+
+	line = refRe.ReplaceAllStringFunc(line, func(match string) string {
+		inner := match[2 : len(match)-2]
+		inner = strings.TrimSpace(inner)
+
+		// local variable
+		if v, ok := currentScope.Resolve(inner); ok && v.Value != nil {
+			return ast.ValueToString(*v.Value)
+		}
+
+		// obj.prop
+		if dotIdx := strings.LastIndex(inner, "."); dotIdx >= 0 {
+			objName := inner[:dotIdx]
+			propName := inner[dotIdx+1:]
+			if v, ok := currentScope.Resolve(objName); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
+				if prop, ok := v.Value.Object[propName]; ok {
+					return ast.ValueToString(prop)
+				}
+			}
+			// module-level variable via @import alias
+			if ip.ws != nil && ip.doc != nil {
+				for _, imp := range ip.doc.Imports {
+					if imp.Alias == objName {
+						targetDoc := resolveImportForRender(imp.Path, ip.ws)
+						if targetDoc != nil {
+							for _, tv := range targetDoc.Variables {
+								if tv.Name == propName && tv.Access != ast.AccessPrivate {
+									if tv.Value != nil {
+										return ast.ValueToString(*tv.Value)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		return match
+	})
+
+	// restore escapes
+	line = restoreEscapes(line)
+	return line
+}
+
+func (ip *interpreter) substituteForLine(line string, iter control.ForIteration, iterName string) string {
+	// handle {{iterator.prop}} first
+	if iter.Value.Kind == ast.TypeObject {
+		for key, val := range iter.Value.Object {
+			placeholder := "{{" + iterName + "." + key + "}}"
+			line = strings.ReplaceAll(line, placeholder, ast.ValueToString(val))
+		}
+	}
+	// handle {{iterator}}
+	placeholder := "{{" + iterName + "}}"
+	if iter.Value.Kind != ast.TypeObject {
+		line = strings.ReplaceAll(line, placeholder, ast.ValueToString(iter.Value))
+	}
+	return line
+}
+
+func (ip *interpreter) writeLine(line string) error {
+	_, err := fmt.Fprintln(ip.writer, line)
+	return err
+}
+
+func resolveImportForRender(importPath string, ws *workspace.Workspace) *ast.Document {
+	clean := strings.TrimPrefix(importPath, "./")
+	if doc := ws.GetDocumentByPath(clean); doc != nil {
+		return doc
+	}
+	if doc := ws.GetDocumentByPath(clean + ".md"); doc != nil {
+		return doc
+	}
+	if doc := ws.GetDocument(importPath); doc != nil {
+		return doc
+	}
+	return nil
+}
+
+var directiveCheckRe = refDirectiveRe
+
+func init() {
+	// compiled in render.go or here
+}
