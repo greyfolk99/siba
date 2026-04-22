@@ -26,13 +26,21 @@ func ParseDocument(path string, source string) *ast.Document {
 	doc.Directives = ParseDirectives(source)
 
 	// Extract document metadata
-	doc.Name = extractDocName(doc.Directives)
+	doc.Name, doc.IsTemplate = extractDocMeta(doc.Directives)
 	doc.ExtendsName = extractExtends(doc.Directives)
-	doc.IsTemplate = extractIsTemplate(doc.Directives)
 
 	// Validate @doc + @template exclusivity
 	if diag := validateDocTemplateExclusive(doc.Directives); diag != nil {
 		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
+
+	// @template without name is an error
+	if doc.IsTemplate && doc.Name == "" {
+		doc.Diagnostics = append(doc.Diagnostics, ast.Diagnostic{
+			Severity: ast.SeverityError,
+			Code:     "E002",
+			Message:  "@template requires a name: <!-- @template name -->",
+		})
 	}
 
 	// Parse headings and build tree
@@ -59,13 +67,21 @@ func ParseDocument(path string, source string) *ast.Document {
 	return doc
 }
 
-func extractDocName(directives []ast.Directive) string {
+// extractDocMeta returns (name, isTemplate) from @doc or @template directives.
+// @template name → name from template, isTemplate=true
+// @doc name → name from doc, isTemplate=false
+func extractDocMeta(directives []ast.Directive) (string, bool) {
 	for _, d := range directives {
-		if d.Kind == ast.DirectiveDoc {
-			return strings.TrimSpace(d.Args)
+		if d.Kind == ast.DirectiveTemplate {
+			return strings.TrimSpace(d.Args), true
 		}
 	}
-	return ""
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveDoc {
+			return strings.TrimSpace(d.Args), false
+		}
+	}
+	return "", false
 }
 
 func extractExtends(directives []ast.Directive) string {
@@ -75,15 +91,6 @@ func extractExtends(directives []ast.Directive) string {
 		}
 	}
 	return ""
-}
-
-func extractIsTemplate(directives []ast.Directive) bool {
-	for _, d := range directives {
-		if d.Kind == ast.DirectiveTemplate {
-			return true
-		}
-	}
-	return false
 }
 
 func validateDocTemplateExclusive(directives []ast.Directive) *ast.Diagnostic {

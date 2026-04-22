@@ -184,7 +184,7 @@ func TestUnmatchedControlBlocks(t *testing.T) {
 
 func TestDocTemplateExclusive(t *testing.T) {
 	source := `<!-- @doc my-doc -->
-<!-- @template -->
+<!-- @template my-tmpl -->
 # Test`
 
 	doc := ParseDocument("test.md", source)
@@ -197,5 +197,41 @@ func TestDocTemplateExclusive(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected E001 diagnostic for @doc + @template")
+	}
+}
+
+func TestTemplateRequiresName(t *testing.T) {
+	source := `<!-- @template -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E002" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected E002 diagnostic for @template without name")
+	}
+}
+
+func TestTemplateWithName(t *testing.T) {
+	source := `<!-- @template api-spec -->
+# API Spec
+## Endpoints
+## Error Handling`
+
+	doc := ParseDocument("tmpl.md", source)
+
+	if doc.Name != "api-spec" {
+		t.Errorf("expected Name='api-spec', got %q", doc.Name)
+	}
+	if !doc.IsTemplate {
+		t.Error("expected IsTemplate=true")
+	}
+	if len(doc.Diagnostics) > 0 {
+		t.Errorf("expected no diagnostics, got %v", doc.Diagnostics)
 	}
 }

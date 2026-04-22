@@ -34,7 +34,7 @@ type Workspace struct {
 	Config     *ModuleConfig
 	Documents  map[string]*ast.Document // keyed by @doc name
 	DocsByPath map[string]*ast.Document // keyed by file path
-	Templates  map[string]*ast.Document // keyed by path (isTemplate=true)
+	Templates  map[string]*ast.Document // keyed by @template name
 }
 
 // LoadWorkspace loads a workspace from a root directory
@@ -70,8 +70,8 @@ func LoadWorkspace(root string) (*Workspace, error) {
 		if doc.Name != "" {
 			w.Documents[doc.Name] = doc
 		}
-		if doc.IsTemplate {
-			w.Templates[relPath] = doc
+		if doc.IsTemplate && doc.Name != "" {
+			w.Templates[doc.Name] = doc
 		}
 	}
 
@@ -108,17 +108,10 @@ func (w *Workspace) GetDocumentByPath(path string) *ast.Document {
 	return w.DocsByPath[path]
 }
 
-// GetTemplate returns a template document that another doc extends
+// GetTemplate returns a template document by its @template name
 func (w *Workspace) GetTemplate(name string) *ast.Document {
-	// search by @doc name first
-	if doc, ok := w.Documents[name]; ok && doc.IsTemplate {
+	if doc, ok := w.Templates[name]; ok {
 		return doc
-	}
-	// search by path
-	for _, doc := range w.Templates {
-		if doc.Name == name {
-			return doc
-		}
 	}
 	return nil
 }
@@ -138,8 +131,8 @@ func (w *Workspace) RefreshDocument(path string, source string) {
 	if doc.Name != "" {
 		w.Documents[doc.Name] = doc
 	}
-	if doc.IsTemplate {
-		w.Templates[path] = doc
+	if doc.IsTemplate && doc.Name != "" {
+		w.Templates[doc.Name] = doc
 	}
 }
 

@@ -58,7 +58,7 @@ Heading levels define a tree. No open/close syntax needed.
 Directives go in HTML comments above headings. The document body stays pure markdown.
 
 ```markdown
-<!-- @template -->
+<!-- @template architecture-doc -->
 # Architecture Document
 
 ## Overview
@@ -90,8 +90,7 @@ All requests require {{auth-type}} token.
 A template defines required structure. Documents that extend it must fulfill the contract.
 
 ```markdown
-<!-- @template -->
-<!-- @doc api-spec -->
+<!-- @template api-spec -->
 # API Spec
 ## Endpoints       (required)
 ## Error Handling  (required)

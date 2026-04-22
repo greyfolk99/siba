@@ -35,8 +35,8 @@ func makeWorkspace(docs ...*ast.Document) *workspace.Workspace {
 		if d.Path != "" {
 			ws.DocsByPath[d.Path] = d
 		}
-		if d.IsTemplate {
-			ws.Templates[d.Path] = d
+		if d.IsTemplate && d.Name != "" {
+			ws.Templates[d.Name] = d
 		}
 	}
 	return ws
