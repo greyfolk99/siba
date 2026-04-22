@@ -51,7 +51,7 @@ func (s *Scope) Declare(name string, v ast.Variable) *ast.Diagnostic {
 		}
 	}
 
-	// check const shadowing — const can never shadow anything
+	// @const can NEVER shadow a parent variable (const is immutable + no shadowing)
 	if v.Mutability == ast.MutConst {
 		if existing, _ := s.resolveUp(name); existing != nil {
 			return &ast.Diagnostic{
@@ -62,8 +62,8 @@ func (s *Scope) Declare(name string, v ast.Variable) *ast.Diagnostic {
 		}
 	}
 
-	// @let CAN shadow parent variables (including @const) in child scopes.
-	// This is by design — @let is the mutable, shadowable keyword.
+	// @let CAN redeclare in child scopes (each child gets its own value).
+	// This is standard block scoping — like JS let in nested blocks.
 
 	vCopy := v
 	s.Vars[name] = &vCopy

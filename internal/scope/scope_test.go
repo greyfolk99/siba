@@ -378,9 +378,8 @@ func TestBuildScopeTree_VariableOnHeadingLine(t *testing.T) {
 	}
 }
 
-// TestBuildScopeTree_LetShadowsConst verifies that a @let in a child scope CAN shadow a @const in the parent (no error).
-func TestBuildScopeTree_LetShadowsConst(t *testing.T) {
-	// @let in child CAN shadow @const in parent — @let is the shadowable keyword
+// TestBuildScopeTree_LetRedeclaresInChild verifies that @let in a child scope can redeclare a variable from the parent (standard block scoping).
+func TestBuildScopeTree_LetRedeclaresInChild(t *testing.T) {
 	doc := &ast.Document{
 		Source: "# A\nconst x=1\n## A1\nlet x=2\n",
 		Headings: []*ast.Heading{
@@ -416,13 +415,19 @@ func TestBuildScopeTree_LetShadowsConst(t *testing.T) {
 	root, diags := BuildScopeTree(doc)
 
 	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diags)
+		t.Fatalf("expected 0 diagnostics (let can redeclare in child), got %d: %v", len(diags), diags)
 	}
 
-	// x in child should resolve to @let x=2 (shadowed)
+	// x in child scope resolves to @let x=2
 	scopeA1 := FindScopeForLine(root, 4)
 	if v, ok := scopeA1.Resolve("x"); !ok || v.Value.Num != 2 {
 		t.Fatalf("expected x=2 from child @let, got %v", v)
+	}
+
+	// x in parent scope still resolves to @const x=1
+	scopeA := FindScopeForLine(root, 2)
+	if v, ok := scopeA.Resolve("x"); !ok || v.Value.Num != 1 {
+		t.Fatalf("expected x=1 from parent @const, got %v", v)
 	}
 }
 
@@ -863,7 +868,7 @@ func TestFindScopeForLine_SingleLineScope(t *testing.T) {
 	}
 }
 
-// TestDeclare_ConstInRootLetInChild verifies that declaring a @let in a child scope CAN shadow a parent @const (no error).
+// TestDeclare_ConstInRootLetInChild verifies that @let in a child scope can redeclare a parent @const variable.
 func TestDeclare_ConstInRootLetInChild(t *testing.T) {
 	root := NewScope("root", ScopeHeading, nil)
 	child := NewScope("child", ScopeHeading, root)
@@ -875,10 +880,9 @@ func TestDeclare_ConstInRootLetInChild(t *testing.T) {
 
 	d = child.Declare("x", ast.Variable{Name: "x", Mutability: ast.MutLet, Value: &ast.Value{Kind: ast.TypeNumber, Num: 2}})
 	if d != nil {
-		t.Fatalf("@let should be able to shadow parent @const, got: %v", d)
+		t.Fatalf("@let in child should be able to redeclare, got: %v", d)
 	}
 
-	// child resolves to @let x=2
 	v, ok := child.Resolve("x")
 	if !ok || v.Value.Num != 2 {
 		t.Fatalf("expected x=2, got %v", v)
