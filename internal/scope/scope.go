@@ -51,27 +51,19 @@ func (s *Scope) Declare(name string, v ast.Variable) *ast.Diagnostic {
 		}
 	}
 
-	// check const shadowing
+	// check const shadowing — const can never shadow anything
 	if v.Mutability == ast.MutConst {
 		if existing, _ := s.resolveUp(name); existing != nil {
 			return &ast.Diagnostic{
 				Severity: ast.SeverityError,
 				Code:     "E021",
-				Message:  fmt.Sprintf("cannot shadow const variable: %s", name),
+				Message:  fmt.Sprintf("cannot shadow variable with const: %s", name),
 			}
 		}
 	}
 
-	// check let shadowing of const
-	if v.Mutability == ast.MutLet {
-		if existing, _ := s.resolveUp(name); existing != nil && existing.Mutability == ast.MutConst {
-			return &ast.Diagnostic{
-				Severity: ast.SeverityError,
-				Code:     "E022",
-				Message:  fmt.Sprintf("cannot shadow const variable with let: %s", name),
-			}
-		}
-	}
+	// @let CAN shadow parent variables (including @const) in child scopes.
+	// This is by design — @let is the mutable, shadowable keyword.
 
 	vCopy := v
 	s.Vars[name] = &vCopy
@@ -146,5 +138,20 @@ func buildHeadingScope(h *ast.Heading, parent *Scope) {
 
 	for _, child := range h.Children {
 		buildHeadingScope(child, s)
+	}
+
+	// Extend parent scope's EndLine to cover all children
+	if len(h.Children) > 0 {
+		lastChild := h.Children[len(h.Children)-1]
+		lastChildEnd := lastChild.Content.End.Line
+		// Also check if children have their own children
+		for _, ch := range h.Children {
+			if ch.Content.End.Line > lastChildEnd {
+				lastChildEnd = ch.Content.End.Line
+			}
+		}
+		if lastChildEnd > s.EndLine {
+			s.EndLine = lastChildEnd
+		}
 	}
 }

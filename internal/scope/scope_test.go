@@ -378,9 +378,9 @@ func TestBuildScopeTree_VariableOnHeadingLine(t *testing.T) {
 	}
 }
 
-// TestBuildScopeTree_LetShadowsConst_E022 verifies that a @let in a child scope cannot shadow a @const in the parent, producing an E022 diagnostic.
-func TestBuildScopeTree_LetShadowsConst_E022(t *testing.T) {
-	// @let in child cannot shadow @const in parent → E022
+// TestBuildScopeTree_LetShadowsConst verifies that a @let in a child scope CAN shadow a @const in the parent (no error).
+func TestBuildScopeTree_LetShadowsConst(t *testing.T) {
+	// @let in child CAN shadow @const in parent — @let is the shadowable keyword
 	doc := &ast.Document{
 		Source: "# A\nconst x=1\n## A1\nlet x=2\n",
 		Headings: []*ast.Heading{
@@ -415,17 +415,14 @@ func TestBuildScopeTree_LetShadowsConst_E022(t *testing.T) {
 
 	root, diags := BuildScopeTree(doc)
 
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diags)
-	}
-	if diags[0].Code != "E022" {
-		t.Fatalf("expected E022 diagnostic, got %s", diags[0].Code)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diags)
 	}
 
-	// x in child should still resolve to parent's const
+	// x in child should resolve to @let x=2 (shadowed)
 	scopeA1 := FindScopeForLine(root, 4)
-	if v, ok := scopeA1.Resolve("x"); !ok || v.Value.Num != 1 {
-		t.Fatalf("expected x=1 from parent const, got %v", v)
+	if v, ok := scopeA1.Resolve("x"); !ok || v.Value.Num != 2 {
+		t.Fatalf("expected x=2 from child @let, got %v", v)
 	}
 }
 
@@ -866,9 +863,8 @@ func TestFindScopeForLine_SingleLineScope(t *testing.T) {
 	}
 }
 
-// TestDeclare_ConstInRootLetInChild verifies that declaring a @let in a child scope when the parent has a @const with the same name produces an E022 diagnostic.
+// TestDeclare_ConstInRootLetInChild verifies that declaring a @let in a child scope CAN shadow a parent @const (no error).
 func TestDeclare_ConstInRootLetInChild(t *testing.T) {
-	// Direct Declare test: root has const, child tries @let with same name
 	root := NewScope("root", ScopeHeading, nil)
 	child := NewScope("child", ScopeHeading, root)
 
@@ -878,11 +874,14 @@ func TestDeclare_ConstInRootLetInChild(t *testing.T) {
 	}
 
 	d = child.Declare("x", ast.Variable{Name: "x", Mutability: ast.MutLet, Value: &ast.Value{Kind: ast.TypeNumber, Num: 2}})
-	if d == nil {
-		t.Fatal("expected E022 diagnostic")
+	if d != nil {
+		t.Fatalf("@let should be able to shadow parent @const, got: %v", d)
 	}
-	if d.Code != "E022" {
-		t.Fatalf("expected E022, got %s", d.Code)
+
+	// child resolves to @let x=2
+	v, ok := child.Resolve("x")
+	if !ok || v.Value.Num != 2 {
+		t.Fatalf("expected x=2, got %v", v)
 	}
 }
 

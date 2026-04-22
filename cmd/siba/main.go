@@ -310,7 +310,11 @@ func renderSingleFile(path string, jsonMode bool) {
 		os.Exit(1)
 	}
 
-	output, err := render.Render(doc)
+	// Load workspace for cross-doc refs and @default inheritance
+	cwd, _ := os.Getwd()
+	ws, _ := workspace.LoadWorkspace(cwd)
+
+	output, err := render.RenderWithWorkspace(doc, ws)
 	if err != nil {
 		if jsonMode {
 			writeJSON(JSONRenderResult{File: path, Error: err.Error()})

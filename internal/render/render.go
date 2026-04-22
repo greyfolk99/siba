@@ -12,6 +12,7 @@ import (
 	"github.com/hjseo/siba/internal/control"
 	"github.com/hjseo/siba/internal/parser"
 	"github.com/hjseo/siba/internal/scope"
+	"github.com/hjseo/siba/internal/template"
 	"github.com/hjseo/siba/internal/workspace"
 )
 
@@ -104,11 +105,17 @@ func (ec *EvalContext) GetCached(key string) (string, bool) {
 // Render processes a single document and returns clean markdown
 func Render(doc *ast.Document) (string, error) {
 	ctx := NewEvalContext()
-	return RenderWithContext(doc, ctx)
+	return RenderWithContext(doc, ctx, nil)
+}
+
+// RenderWithWorkspace renders a document with workspace context for cross-doc refs and @default inheritance
+func RenderWithWorkspace(doc *ast.Document, ws *workspace.Workspace) (string, error) {
+	ctx := NewEvalContext()
+	return RenderWithContext(doc, ctx, ws)
 }
 
 // RenderWithContext renders a document with a shared EvalContext (for cross-document cycle detection)
-func RenderWithContext(doc *ast.Document, ctx *EvalContext) (string, error) {
+func RenderWithContext(doc *ast.Document, ctx *EvalContext, ws *workspace.Workspace) (string, error) {
 	// mark this document as being evaluated
 	docKey := "doc:" + doc.Path
 	if doc.Name != "" {
@@ -118,6 +125,15 @@ func RenderWithContext(doc *ast.Document, ctx *EvalContext) (string, error) {
 		return "", err
 	}
 	defer ctx.Leave(docKey)
+
+	// Apply template inheritance if workspace available
+	if ws != nil && doc.ExtendsName != "" {
+		tmplDoc := ws.GetTemplate(doc.ExtendsName)
+		if tmplDoc != nil {
+			doc.Variables = template.InheritVariables(doc, tmplDoc)
+			doc.Headings = template.MergeHeadings(doc, tmplDoc)
+		}
+	}
 
 	// Build scope tree
 	rootScope, scopeDiags := scope.BuildScopeTree(doc)
@@ -134,7 +150,7 @@ func RenderWithContext(doc *ast.Document, ctx *EvalContext) (string, error) {
 	content = protectEscapes(content)
 
 	// 3. Substitute variables (with cycle detection)
-	content = substituteVariables(content, rootScope, doc, ctx)
+	content = substituteVariables(content, rootScope, doc, ctx, ws)
 
 	// 4. Restore escaped refs: placeholder -> {{x}}
 	content = restoreEscapes(content)
@@ -151,7 +167,7 @@ func RenderWithContext(doc *ast.Document, ctx *EvalContext) (string, error) {
 	return content, nil
 }
 
-func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Document, ctx *EvalContext) string {
+func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Document, ctx *EvalContext, ws *workspace.Workspace) string {
 	lines := strings.Split(content, "\n")
 	var result []string
 
@@ -194,11 +210,24 @@ func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Docume
 			if dotIdx := strings.LastIndex(inner, "."); dotIdx >= 0 {
 				objName := inner[:dotIdx]
 				propName := inner[dotIdx+1:]
+				// local object property
 				if v, ok := currentScope.Resolve(objName); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
 					if prop, ok := v.Value.Object[propName]; ok {
 						value := ast.ValueToString(prop)
 						ctx.Cache(varKey, value)
 						return value
+					}
+				}
+				// cross-document variable: {{doc-name.variable}}
+				if ws != nil {
+					if targetDoc := ws.GetDocument(objName); targetDoc != nil {
+						for _, tv := range targetDoc.Variables {
+							if tv.Name == propName && tv.Access == ast.AccessPublic && tv.Value != nil {
+								value := ast.ValueToString(*tv.Value)
+								ctx.Cache(varKey, value)
+								return value
+							}
+						}
 					}
 				}
 			}
@@ -305,7 +334,7 @@ func RenderWorkspace(w *workspace.Workspace, outputDir string) error {
 			continue
 		}
 
-		output, err := RenderWithContext(doc, ctx)
+		output, err := RenderWithContext(doc, ctx, w)
 		if err != nil {
 			if cycleErr, ok := err.(*CycleError); ok {
 				fmt.Fprintf(os.Stderr, "cycle error in %s: %s\n", path, cycleErr.Error())
