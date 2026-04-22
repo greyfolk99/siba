@@ -1,3 +1,5 @@
+// Package scope tests verify the scope tree construction, variable resolution,
+// and declaration rules for siba's heading-based lexical scoping system.
 package scope
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/hjseo/siba/internal/ast"
 )
 
+// TestBuildScopeTree_RootVariable verifies that a variable declared before any heading is placed in the root scope and is resolvable from child scopes.
 func TestBuildScopeTree_RootVariable(t *testing.T) {
 	// Variable declared before any heading → root scope, visible everywhere
 	doc := &ast.Document{
@@ -44,6 +47,7 @@ func TestBuildScopeTree_RootVariable(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_HeadingScopeIsolation verifies that variables in sibling heading scopes are isolated and not visible to each other.
 func TestBuildScopeTree_HeadingScopeIsolation(t *testing.T) {
 	// Variable in Section A should NOT be visible in Section B
 	doc := &ast.Document{
@@ -102,6 +106,7 @@ func TestBuildScopeTree_HeadingScopeIsolation(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_ParentVariableVisibleInChild verifies that a variable in a parent heading scope is resolvable from a nested child scope via the scope chain.
 func TestBuildScopeTree_ParentVariableVisibleInChild(t *testing.T) {
 	// H1 variable visible in H2 child
 	doc := &ast.Document{
@@ -148,6 +153,7 @@ func TestBuildScopeTree_ParentVariableVisibleInChild(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_LetShadowing verifies that a @let variable in a child scope correctly shadows a @let variable with the same name in the parent scope.
 func TestBuildScopeTree_LetShadowing(t *testing.T) {
 	// @let in child scope shadows parent's @let
 	doc := &ast.Document{
@@ -200,6 +206,7 @@ func TestBuildScopeTree_LetShadowing(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_ConstCannotBeShadowed verifies that redeclaring a @const variable in a child scope produces an E021 diagnostic and the child resolves to the parent's value.
 func TestBuildScopeTree_ConstCannotBeShadowed(t *testing.T) {
 	// @const in parent should prevent @const redeclaration in child
 	doc := &ast.Document{
@@ -257,6 +264,7 @@ func TestBuildScopeTree_ConstCannotBeShadowed(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_DuplicateDeclaration verifies that declaring two variables with the same name in the same scope produces an E020 diagnostic.
 func TestBuildScopeTree_DuplicateDeclaration(t *testing.T) {
 	// Two variables with same name in same scope → E020
 	doc := &ast.Document{
@@ -294,6 +302,7 @@ func TestBuildScopeTree_DuplicateDeclaration(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_EmptyDocument verifies that a document with no headings and no variables produces a valid root scope with no children.
 func TestBuildScopeTree_EmptyDocument(t *testing.T) {
 	// No headings, no variables
 	doc := &ast.Document{
@@ -324,6 +333,7 @@ func TestBuildScopeTree_EmptyDocument(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_VariableOnHeadingLine verifies that a variable declared on the same line as a heading is placed in that heading's scope.
 func TestBuildScopeTree_VariableOnHeadingLine(t *testing.T) {
 	// Variable on the same line as a heading → belongs to that heading's scope
 	doc := &ast.Document{
@@ -368,6 +378,7 @@ func TestBuildScopeTree_VariableOnHeadingLine(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_LetShadowsConst_E022 verifies that a @let in a child scope cannot shadow a @const in the parent, producing an E022 diagnostic.
 func TestBuildScopeTree_LetShadowsConst_E022(t *testing.T) {
 	// @let in child cannot shadow @const in parent → E022
 	doc := &ast.Document{
@@ -418,6 +429,7 @@ func TestBuildScopeTree_LetShadowsConst_E022(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_DeeplyNested verifies that in a 4-level deep heading hierarchy, the deepest scope can resolve all ancestor variables while shallower scopes cannot see descendants.
 func TestBuildScopeTree_DeeplyNested(t *testing.T) {
 	// H1 > H2 > H3 > H4 — variable at each level, deepest resolves all ancestors
 	doc := &ast.Document{
@@ -487,6 +499,7 @@ func TestBuildScopeTree_DeeplyNested(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_SiblingsWithSameVarName verifies that two sibling headings can each declare a variable with the same name without conflict, as they are in independent scopes.
 func TestBuildScopeTree_SiblingsWithSameVarName(t *testing.T) {
 	// Two sibling headings each declare variable "x" — independent, no conflict
 	doc := &ast.Document{
@@ -528,6 +541,7 @@ func TestBuildScopeTree_SiblingsWithSameVarName(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_OnlyRootVariables verifies that when a document has variables but no headings, all variables are placed in the root scope and resolvable from any line.
 func TestBuildScopeTree_OnlyRootVariables(t *testing.T) {
 	// Document with variables but no headings — all in root
 	doc := &ast.Document{
@@ -559,6 +573,7 @@ func TestBuildScopeTree_OnlyRootVariables(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_AdjacentHeadingsNoContent verifies correct scope assignment when adjacent headings have no content between them, including empty content ranges.
 func TestBuildScopeTree_AdjacentHeadingsNoContent(t *testing.T) {
 	// Adjacent headings with no content between them
 	doc := &ast.Document{
@@ -602,6 +617,7 @@ func TestBuildScopeTree_AdjacentHeadingsNoContent(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_VariableAtLastLine verifies that a variable declared on the very last line of a document is correctly placed and resolvable.
 func TestBuildScopeTree_VariableAtLastLine(t *testing.T) {
 	// Variable at the very last line of document
 	doc := &ast.Document{
@@ -632,6 +648,7 @@ func TestBuildScopeTree_VariableAtLastLine(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_EmptySource verifies that a completely empty source string produces a valid root scope with StartLine and EndLine both set to 1.
 func TestBuildScopeTree_EmptySource(t *testing.T) {
 	// Completely empty source
 	doc := &ast.Document{
@@ -652,6 +669,7 @@ func TestBuildScopeTree_EmptySource(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_MultipleVarsSameScope verifies that multiple distinct variables declared in the same heading scope are all stored and accessible.
 func TestBuildScopeTree_MultipleVarsSameScope(t *testing.T) {
 	// Multiple different variables in the same heading scope
 	doc := &ast.Document{
@@ -681,6 +699,7 @@ func TestBuildScopeTree_MultipleVarsSameScope(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_UnresolvedVariable verifies that resolving a variable name that does not exist in any scope returns not-found.
 func TestBuildScopeTree_UnresolvedVariable(t *testing.T) {
 	// Resolve a name that doesn't exist anywhere
 	doc := &ast.Document{
@@ -705,6 +724,7 @@ func TestBuildScopeTree_UnresolvedVariable(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_HeadingUsesNameOverSlug verifies that when a heading has a @name attribute, the scope uses that name instead of the slug.
 func TestBuildScopeTree_HeadingUsesNameOverSlug(t *testing.T) {
 	// Heading with @name should use Name, not Slug
 	doc := &ast.Document{
@@ -728,6 +748,7 @@ func TestBuildScopeTree_HeadingUsesNameOverSlug(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_HeadingFallsBackToSlug verifies that when a heading has no @name attribute, the scope falls back to using the slug.
 func TestBuildScopeTree_HeadingFallsBackToSlug(t *testing.T) {
 	// Heading without @name should use Slug
 	doc := &ast.Document{
@@ -748,6 +769,7 @@ func TestBuildScopeTree_HeadingFallsBackToSlug(t *testing.T) {
 	}
 }
 
+// TestFindScopeForLine_DeepestMatch verifies that FindScopeForLine returns the deepest (most specific) matching scope for each line across nested and sibling scopes.
 func TestFindScopeForLine_DeepestMatch(t *testing.T) {
 	root := NewScope("root", ScopeHeading, nil)
 	root.StartLine = 1
@@ -793,6 +815,7 @@ func TestFindScopeForLine_DeepestMatch(t *testing.T) {
 	}
 }
 
+// TestFindScopeForLine_OutOfRange verifies that lines outside the document range (before line 1 or beyond EndLine) fall back to the root scope.
 func TestFindScopeForLine_OutOfRange(t *testing.T) {
 	// Lines outside document range should return root
 	root := NewScope("root", ScopeHeading, nil)
@@ -816,6 +839,7 @@ func TestFindScopeForLine_OutOfRange(t *testing.T) {
 	}
 }
 
+// TestFindScopeForLine_SingleLineScope verifies that a scope where StartLine equals EndLine correctly matches only that exact line.
 func TestFindScopeForLine_SingleLineScope(t *testing.T) {
 	// Scope where StartLine == EndLine
 	root := NewScope("root", ScopeHeading, nil)
@@ -842,6 +866,7 @@ func TestFindScopeForLine_SingleLineScope(t *testing.T) {
 	}
 }
 
+// TestDeclare_ConstInRootLetInChild verifies that declaring a @let in a child scope when the parent has a @const with the same name produces an E022 diagnostic.
 func TestDeclare_ConstInRootLetInChild(t *testing.T) {
 	// Direct Declare test: root has const, child tries @let with same name
 	root := NewScope("root", ScopeHeading, nil)
@@ -861,6 +886,7 @@ func TestDeclare_ConstInRootLetInChild(t *testing.T) {
 	}
 }
 
+// TestDeclare_LetInRootLetInChild verifies that a @let in a child scope can successfully shadow a @let in the parent scope without error.
 func TestDeclare_LetInRootLetInChild(t *testing.T) {
 	// Direct Declare test: root has let, child can shadow with let
 	root := NewScope("root", ScopeHeading, nil)
@@ -877,6 +903,7 @@ func TestDeclare_LetInRootLetInChild(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_DuplicateLetSameScope_E020 verifies that two @let declarations with the same name in the same scope produce an E020 diagnostic.
 func TestBuildScopeTree_DuplicateLetSameScope_E020(t *testing.T) {
 	// Two @let with same name in same scope → E020
 	doc := &ast.Document{
@@ -903,6 +930,7 @@ func TestBuildScopeTree_DuplicateLetSameScope_E020(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_ConstShadowsParentLet_E021 verifies that a @const in a child scope cannot shadow a parent's @let, producing an E021 diagnostic.
 func TestBuildScopeTree_ConstShadowsParentLet_E021(t *testing.T) {
 	// @const in child when parent has @let → E021 (const cannot shadow anything)
 	doc := &ast.Document{
@@ -936,6 +964,7 @@ func TestBuildScopeTree_ConstShadowsParentLet_E021(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_GrandchildConstShadowsGrandparent verifies that E021 is emitted when a @const in a grandchild scope attempts to shadow a @const two levels up.
 func TestBuildScopeTree_GrandchildConstShadowsGrandparent(t *testing.T) {
 	// @const in H3 when H1 has @const → E021 must traverse 2+ levels
 	doc := &ast.Document{
@@ -982,6 +1011,7 @@ func TestBuildScopeTree_GrandchildConstShadowsGrandparent(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_DiagnosticHasCorrectRange verifies that a diagnostic's Range field points to the position of the offending (duplicate) variable declaration.
 func TestBuildScopeTree_DiagnosticHasCorrectRange(t *testing.T) {
 	// Verify diagnostic Range field is populated with the variable's position
 	doc := &ast.Document{
@@ -1013,6 +1043,7 @@ func TestBuildScopeTree_DiagnosticHasCorrectRange(t *testing.T) {
 	}
 }
 
+// TestBuildScopeTree_VariableInGapBeforeFirstHeading verifies that a variable declared in the preamble (before the first heading) lands in the root scope and is visible from heading scopes.
 func TestBuildScopeTree_VariableInGapBeforeFirstHeading(t *testing.T) {
 	// Variable on line between root start and first heading → root scope
 	doc := &ast.Document{
@@ -1050,6 +1081,7 @@ func TestBuildScopeTree_VariableInGapBeforeFirstHeading(t *testing.T) {
 	}
 }
 
+// TestFindScopeForLine_AdjacentSiblingsSharedBoundary verifies that when two sibling scopes share a boundary line, the later sibling wins due to reverse iteration order.
 func TestFindScopeForLine_AdjacentSiblingsSharedBoundary(t *testing.T) {
 	// Scope A ends at line 5, scope B starts at line 5 → B wins (last child in reverse iteration)
 	root := NewScope("root", ScopeHeading, nil)

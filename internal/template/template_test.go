@@ -1,3 +1,5 @@
+// Package template tests verify template resolution, contract validation,
+// variable inheritance, and heading merge logic for siba documents.
 package template
 
 import (
@@ -59,6 +61,7 @@ func h(level int, text, slug, name string, ann ast.Annotation, children ...*ast.
 
 // --- ResolveTemplate ---
 
+// TestResolveTemplate_Found verifies that a document with ExtendsName resolves to the correct template.
 func TestResolveTemplate_Found(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", nil)
 	ws := makeWorkspace(tmpl)
@@ -73,6 +76,7 @@ func TestResolveTemplate_Found(t *testing.T) {
 	}
 }
 
+// TestResolveTemplate_NotFound verifies that referencing a nonexistent template produces an E071 diagnostic.
 func TestResolveTemplate_NotFound(t *testing.T) {
 	ws := makeWorkspace()
 	doc := &ast.Document{Name: "child", ExtendsName: "missing"}
@@ -86,6 +90,7 @@ func TestResolveTemplate_NotFound(t *testing.T) {
 	}
 }
 
+// TestResolveTemplate_NoExtends verifies that a document without ExtendsName returns nil with no error.
 func TestResolveTemplate_NoExtends(t *testing.T) {
 	ws := makeWorkspace()
 	doc := &ast.Document{Name: "standalone"}
@@ -96,6 +101,7 @@ func TestResolveTemplate_NoExtends(t *testing.T) {
 	}
 }
 
+// TestResolveTemplate_NonTemplateDoc verifies that extending a non-template document produces an E071 diagnostic.
 func TestResolveTemplate_NonTemplateDoc(t *testing.T) {
 	regular := makeDoc("base", "base.md") // not a template
 	ws := makeWorkspace(regular)
@@ -113,6 +119,7 @@ func TestResolveTemplate_NonTemplateDoc(t *testing.T) {
 
 // --- ValidateContract ---
 
+// TestValidateContract_AllRequiredPresent verifies that no diagnostics are emitted when all required headings exist.
 func TestValidateContract_AllRequiredPresent(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
@@ -131,6 +138,7 @@ func TestValidateContract_AllRequiredPresent(t *testing.T) {
 	}
 }
 
+// TestValidateContract_RequiredMissing verifies that a missing @required heading produces an E070 diagnostic.
 func TestValidateContract_RequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
@@ -152,6 +160,7 @@ func TestValidateContract_RequiredMissing(t *testing.T) {
 	}
 }
 
+// TestValidateContract_DefaultHeadingOptional verifies that omitting a @default heading does not produce a diagnostic.
 func TestValidateContract_DefaultHeadingOptional(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
@@ -170,6 +179,7 @@ func TestValidateContract_DefaultHeadingOptional(t *testing.T) {
 	}
 }
 
+// TestValidateContract_LevelMismatch verifies that a heading with the wrong level produces an E072 diagnostic.
 func TestValidateContract_LevelMismatch(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
@@ -189,6 +199,7 @@ func TestValidateContract_LevelMismatch(t *testing.T) {
 	}
 }
 
+// TestValidateContract_NestedRequiredMissing verifies that a missing nested @required heading produces an E070 diagnostic.
 func TestValidateContract_NestedRequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Chapter", "chapter", "", ast.AnnotationRequired,
@@ -214,6 +225,7 @@ func TestValidateContract_NestedRequiredMissing(t *testing.T) {
 	}
 }
 
+// TestValidateContract_MatchByName verifies that headings with different text but the same @name satisfy the contract.
 func TestValidateContract_MatchByName(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Chapter One", "chapter-one", "ch1", ast.AnnotationRequired),
@@ -230,6 +242,7 @@ func TestValidateContract_MatchByName(t *testing.T) {
 	}
 }
 
+// TestValidateContract_EmptyTemplate verifies that a template with no headings imposes no contract on the child.
 func TestValidateContract_EmptyTemplate(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", nil)
 	child := &ast.Document{
@@ -244,6 +257,7 @@ func TestValidateContract_EmptyTemplate(t *testing.T) {
 	}
 }
 
+// TestValidateContract_EmptyChild verifies that a child with no headings fails when the template has required ones.
 func TestValidateContract_EmptyChild(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Required", "required", "", ast.AnnotationRequired),
@@ -256,6 +270,7 @@ func TestValidateContract_EmptyChild(t *testing.T) {
 	}
 }
 
+// TestValidateContract_AllDefault verifies that a template with only @default headings requires nothing from the child.
 func TestValidateContract_AllDefault(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Optional A", "optional-a", "", ast.AnnotationDefault),
@@ -271,6 +286,7 @@ func TestValidateContract_AllDefault(t *testing.T) {
 
 // --- InheritVariables ---
 
+// TestInheritVariables_PublicInherited verifies that public template variables are inherited by the child.
 func TestInheritVariables_PublicInherited(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -288,6 +304,7 @@ func TestInheritVariables_PublicInherited(t *testing.T) {
 	}
 }
 
+// TestInheritVariables_PrivateExcluded verifies that private template variables are not inherited by the child.
 func TestInheritVariables_PrivateExcluded(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -302,6 +319,7 @@ func TestInheritVariables_PrivateExcluded(t *testing.T) {
 	}
 }
 
+// TestInheritVariables_ProtectedInherited verifies that protected template variables are inherited by the child.
 func TestInheritVariables_ProtectedInherited(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -316,6 +334,7 @@ func TestInheritVariables_ProtectedInherited(t *testing.T) {
 	}
 }
 
+// TestInheritVariables_ChildOverrides verifies that a child variable with the same name takes precedence over the template.
 func TestInheritVariables_ChildOverrides(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -337,6 +356,7 @@ func TestInheritVariables_ChildOverrides(t *testing.T) {
 	}
 }
 
+// TestInheritVariables_MixedAccess verifies that only public and protected variables are inherited, not private ones.
 func TestInheritVariables_MixedAccess(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -363,6 +383,7 @@ func TestInheritVariables_MixedAccess(t *testing.T) {
 	}
 }
 
+// TestInheritVariables_ChildFirst verifies that child variables appear before inherited template variables in the result.
 func TestInheritVariables_ChildFirst(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -388,6 +409,7 @@ func TestInheritVariables_ChildFirst(t *testing.T) {
 	}
 }
 
+// TestInheritVariables_BothEmpty verifies that inheriting from two empty variable lists returns an empty result.
 func TestInheritVariables_BothEmpty(t *testing.T) {
 	tmpl := &ast.Document{Variables: nil}
 	child := &ast.Document{Variables: nil}
@@ -400,6 +422,7 @@ func TestInheritVariables_BothEmpty(t *testing.T) {
 
 // --- MergeHeadings ---
 
+// TestMergeHeadings_ChildOverrides verifies that a child heading replaces the matching template heading.
 func TestMergeHeadings_ChildOverrides(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Intro", "intro", "", ast.AnnotationRequired),
@@ -416,6 +439,7 @@ func TestMergeHeadings_ChildOverrides(t *testing.T) {
 	}
 }
 
+// TestMergeHeadings_DefaultUsed verifies that a @default template heading is used when the child does not provide it.
 func TestMergeHeadings_DefaultUsed(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Appendix", "appendix", "", ast.AnnotationDefault),
@@ -431,6 +455,7 @@ func TestMergeHeadings_DefaultUsed(t *testing.T) {
 	}
 }
 
+// TestMergeHeadings_ExtraChildHeading verifies that child headings not in the template are appended to the result.
 func TestMergeHeadings_ExtraChildHeading(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Intro", "intro", "", ast.AnnotationRequired),
@@ -451,6 +476,7 @@ func TestMergeHeadings_ExtraChildHeading(t *testing.T) {
 	}
 }
 
+// TestMergeHeadings_NestedMerge verifies that nested child headings are merged with template defaults recursively.
 func TestMergeHeadings_NestedMerge(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Chapter", "chapter", "", ast.AnnotationRequired,
@@ -477,6 +503,7 @@ func TestMergeHeadings_NestedMerge(t *testing.T) {
 	}
 }
 
+// TestMergeHeadings_EmptyTemplate verifies that merging with an empty template returns only the child headings.
 func TestMergeHeadings_EmptyTemplate(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", nil)
 	child := &ast.Document{
@@ -491,6 +518,7 @@ func TestMergeHeadings_EmptyTemplate(t *testing.T) {
 	}
 }
 
+// TestMergeHeadings_EmptyChild verifies that merging an empty child with a template returns default headings only.
 func TestMergeHeadings_EmptyChild(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Default", "default", "", ast.AnnotationDefault),
@@ -505,6 +533,7 @@ func TestMergeHeadings_EmptyChild(t *testing.T) {
 
 // --- matchesHeading ---
 
+// TestMatchesHeading_ByText verifies that two headings with identical text are considered a match.
 func TestMatchesHeading_ByText(t *testing.T) {
 	a := h(1, "Hello", "hello", "", ast.AnnotationRequired)
 	b := h(1, "Hello", "hello", "", ast.AnnotationRequired)
@@ -514,6 +543,7 @@ func TestMatchesHeading_ByText(t *testing.T) {
 	}
 }
 
+// TestMatchesHeading_BySlug verifies that two headings with the same slug match even if their text differs.
 func TestMatchesHeading_BySlug(t *testing.T) {
 	a := h(1, "Different Text", "same-slug", "", ast.AnnotationRequired)
 	b := h(1, "Another Text", "same-slug", "", ast.AnnotationRequired)
@@ -523,6 +553,7 @@ func TestMatchesHeading_BySlug(t *testing.T) {
 	}
 }
 
+// TestMatchesHeading_ByName verifies that two headings with the same @name match regardless of text and slug.
 func TestMatchesHeading_ByName(t *testing.T) {
 	a := h(1, "Different", "different", "samename", ast.AnnotationRequired)
 	b := h(1, "Also Different", "also-different", "samename", ast.AnnotationRequired)
@@ -532,6 +563,7 @@ func TestMatchesHeading_ByName(t *testing.T) {
 	}
 }
 
+// TestMatchesHeading_NoMatch verifies that headings with different text, slug, and name do not match.
 func TestMatchesHeading_NoMatch(t *testing.T) {
 	a := h(1, "Hello", "hello", "", ast.AnnotationRequired)
 	b := h(1, "World", "world", "", ast.AnnotationRequired)

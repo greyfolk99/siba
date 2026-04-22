@@ -1,3 +1,5 @@
+// Package refs tests cover reference resolution, validation, dependency graph
+// construction, and cycle detection for the siba document system.
 package refs
 
 import (
@@ -83,6 +85,7 @@ func makeRef(raw, pathPart, section, variable string, line int) ast.Reference {
 
 // --- ResolveReference: local variable ---
 
+// TestResolveReference_LocalVariable verifies that a reference resolves to a local variable in scope.
 func TestResolveReference_LocalVariable(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"title": {Name: "title", Value: strVal("Hello")},
@@ -105,6 +108,7 @@ func TestResolveReference_LocalVariable(t *testing.T) {
 	}
 }
 
+// TestResolveReference_LocalVariableNotFound verifies that referencing an undeclared variable produces an E050 diagnostic.
 func TestResolveReference_LocalVariableNotFound(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("unknown", "unknown", "", "", 1)
@@ -119,6 +123,7 @@ func TestResolveReference_LocalVariableNotFound(t *testing.T) {
 	}
 }
 
+// TestResolveReference_EscapedReference verifies that escaped references return nil result and nil diagnostic.
 func TestResolveReference_EscapedReference(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := ast.Reference{
@@ -140,6 +145,7 @@ func TestResolveReference_EscapedReference(t *testing.T) {
 
 // --- ResolveReference: document reference ---
 
+// TestResolveReference_DocumentByName verifies that a simple name reference resolves to a document in the workspace.
 func TestResolveReference_DocumentByName(t *testing.T) {
 	targetDoc := makeDoc("config", "config.md")
 	ws := makeWorkspace(targetDoc)
@@ -159,6 +165,7 @@ func TestResolveReference_DocumentByName(t *testing.T) {
 	}
 }
 
+// TestResolveReference_LocalVariablePriority verifies that a local variable takes precedence over a document with the same name.
 func TestResolveReference_LocalVariablePriority(t *testing.T) {
 	// local variable should take priority over document name
 	targetDoc := makeDoc("title", "title.md")
@@ -183,6 +190,7 @@ func TestResolveReference_LocalVariablePriority(t *testing.T) {
 
 // --- ResolveReference: section reference ---
 
+// TestResolveReference_SectionInCurrentDoc verifies that a #section reference resolves to a heading by name in the current document.
 func TestResolveReference_SectionInCurrentDoc(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Introduction", Slug: "introduction", Name: "intro"},
@@ -203,6 +211,7 @@ func TestResolveReference_SectionInCurrentDoc(t *testing.T) {
 	}
 }
 
+// TestResolveReference_SectionBySlug verifies that a #section reference resolves to a heading by its slug.
 func TestResolveReference_SectionBySlug(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "My Section", Slug: "my-section"},
@@ -220,6 +229,7 @@ func TestResolveReference_SectionBySlug(t *testing.T) {
 	}
 }
 
+// TestResolveReference_SectionNotFound verifies that referencing a nonexistent section produces an E053 diagnostic.
 func TestResolveReference_SectionNotFound(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Intro", Slug: "intro"},
@@ -237,6 +247,7 @@ func TestResolveReference_SectionNotFound(t *testing.T) {
 	}
 }
 
+// TestResolveReference_SectionInNestedHeading verifies that a section reference resolves through deeply nested heading children.
 func TestResolveReference_SectionInNestedHeading(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Chapter", Slug: "chapter", Children: []*ast.Heading{
@@ -261,6 +272,7 @@ func TestResolveReference_SectionInNestedHeading(t *testing.T) {
 	}
 }
 
+// TestResolveReference_CrossDocSection verifies that a doc#section reference resolves a heading in another document.
 func TestResolveReference_CrossDocSection(t *testing.T) {
 	targetHeadings := []*ast.Heading{
 		{Level: 1, Text: "API", Slug: "api"},
@@ -280,6 +292,7 @@ func TestResolveReference_CrossDocSection(t *testing.T) {
 	}
 }
 
+// TestResolveReference_CrossDocSectionNoWorkspace verifies that a cross-doc section ref without a workspace produces E051.
 func TestResolveReference_CrossDocSectionNoWorkspace(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("config#api", "config", "api", "", 1)
@@ -294,6 +307,7 @@ func TestResolveReference_CrossDocSectionNoWorkspace(t *testing.T) {
 	}
 }
 
+// TestResolveReference_CrossDocSectionDocNotFound verifies that a cross-doc section ref to a missing document produces E052.
 func TestResolveReference_CrossDocSectionDocNotFound(t *testing.T) {
 	ws := makeWorkspace()
 	s := makeScope(map[string]ast.Variable{})
@@ -311,6 +325,7 @@ func TestResolveReference_CrossDocSectionDocNotFound(t *testing.T) {
 
 // --- ResolveReference: document variable reference ---
 
+// TestResolveReference_DocVariable verifies that a doc.var reference resolves a public variable from another document.
 func TestResolveReference_DocVariable(t *testing.T) {
 	targetVars := []ast.Variable{
 		{Name: "port", Access: ast.AccessPublic, Value: numVal(8080)},
@@ -333,6 +348,7 @@ func TestResolveReference_DocVariable(t *testing.T) {
 	}
 }
 
+// TestResolveReference_DocVariablePrivate verifies that accessing a private variable from another document produces E054.
 func TestResolveReference_DocVariablePrivate(t *testing.T) {
 	targetVars := []ast.Variable{
 		{Name: "secret", Access: ast.AccessPrivate, Value: strVal("hidden")},
@@ -352,6 +368,7 @@ func TestResolveReference_DocVariablePrivate(t *testing.T) {
 	}
 }
 
+// TestResolveReference_DocVariableNotFound verifies that referencing a nonexistent variable on a document produces E054.
 func TestResolveReference_DocVariableNotFound(t *testing.T) {
 	targetDoc := makeDocWithVars("config", "config.md", []ast.Variable{})
 	ws := makeWorkspace(targetDoc)
@@ -368,6 +385,7 @@ func TestResolveReference_DocVariableNotFound(t *testing.T) {
 	}
 }
 
+// TestResolveReference_DocVariableNoWorkspace verifies that a doc.var reference without a workspace produces E051.
 func TestResolveReference_DocVariableNoWorkspace(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("config.port", "config", "", "port", 1)
@@ -382,6 +400,7 @@ func TestResolveReference_DocVariableNoWorkspace(t *testing.T) {
 	}
 }
 
+// TestResolveReference_LocalObjectPropertyAccess verifies that local object property access takes priority over document lookup.
 func TestResolveReference_LocalObjectPropertyAccess(t *testing.T) {
 	// obj.prop should resolve as local object property first
 	s := makeScope(map[string]ast.Variable{
@@ -414,6 +433,7 @@ func TestResolveReference_LocalObjectPropertyAccess(t *testing.T) {
 
 // --- ResolveReference: path-based reference ---
 
+// TestResolveReference_PathBasedDocument verifies that a path-based reference (containing /) resolves to a document by path.
 func TestResolveReference_PathBasedDocument(t *testing.T) {
 	targetDoc := makeDoc("", "docs/api/config.md")
 	ws := makeWorkspace(targetDoc)
@@ -430,6 +450,7 @@ func TestResolveReference_PathBasedDocument(t *testing.T) {
 	}
 }
 
+// TestResolveReference_PathBasedWithExtension verifies that a path reference without .md extension auto-appends .md for lookup.
 func TestResolveReference_PathBasedWithExtension(t *testing.T) {
 	targetDoc := makeDoc("", "docs/api.md")
 	ws := makeWorkspace(targetDoc)
@@ -447,6 +468,7 @@ func TestResolveReference_PathBasedWithExtension(t *testing.T) {
 	}
 }
 
+// TestResolveReference_PathBasedNotFound verifies that a path-based reference to a missing document produces E055.
 func TestResolveReference_PathBasedNotFound(t *testing.T) {
 	ws := makeWorkspace()
 	s := makeScope(map[string]ast.Variable{})
@@ -462,6 +484,7 @@ func TestResolveReference_PathBasedNotFound(t *testing.T) {
 	}
 }
 
+// TestResolveReference_PathBasedNoWorkspace verifies that a path-based reference without a workspace produces E051.
 func TestResolveReference_PathBasedNoWorkspace(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("docs/api", "docs/api", "", "", 1)
@@ -478,6 +501,7 @@ func TestResolveReference_PathBasedNoWorkspace(t *testing.T) {
 
 // --- ValidateReferences ---
 
+// TestValidateReferences_AllValid verifies that a document with all valid references produces zero diagnostics.
 func TestValidateReferences_AllValid(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"title": {Name: "title", Value: strVal("Hello")},
@@ -497,6 +521,7 @@ func TestValidateReferences_AllValid(t *testing.T) {
 	}
 }
 
+// TestValidateReferences_MixedValidInvalid verifies that only invalid references produce diagnostics when mixed with valid ones.
 func TestValidateReferences_MixedValidInvalid(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"title": {Name: "title", Value: strVal("Hello")},
@@ -518,6 +543,7 @@ func TestValidateReferences_MixedValidInvalid(t *testing.T) {
 	}
 }
 
+// TestValidateReferences_SkipsEscaped verifies that escaped references are skipped during validation.
 func TestValidateReferences_SkipsEscaped(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	doc := &ast.Document{
@@ -533,6 +559,7 @@ func TestValidateReferences_SkipsEscaped(t *testing.T) {
 	}
 }
 
+// TestValidateReferences_NoReferences verifies that a document with no references produces zero diagnostics.
 func TestValidateReferences_NoReferences(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	doc := &ast.Document{
@@ -548,6 +575,7 @@ func TestValidateReferences_NoReferences(t *testing.T) {
 
 // --- BuildDependencyGraph ---
 
+// TestBuildDependencyGraph_NoRefs verifies that a document with no references produces an empty dependency graph.
 func TestBuildDependencyGraph_NoRefs(t *testing.T) {
 	doc := makeDoc("main", "main.md")
 	ws := makeWorkspace(doc)
@@ -558,6 +586,7 @@ func TestBuildDependencyGraph_NoRefs(t *testing.T) {
 	}
 }
 
+// TestBuildDependencyGraph_ExtendsCreatesEdge verifies that an @extends relationship creates a dependency edge.
 func TestBuildDependencyGraph_ExtendsCreatesEdge(t *testing.T) {
 	base := makeDoc("base", "base.md")
 	child := &ast.Document{
@@ -577,6 +606,7 @@ func TestBuildDependencyGraph_ExtendsCreatesEdge(t *testing.T) {
 	}
 }
 
+// TestBuildDependencyGraph_DocRefCreatesEdge verifies that a document reference creates a dependency edge.
 func TestBuildDependencyGraph_DocRefCreatesEdge(t *testing.T) {
 	config := makeDoc("config", "config.md")
 	main := &ast.Document{
@@ -598,6 +628,7 @@ func TestBuildDependencyGraph_DocRefCreatesEdge(t *testing.T) {
 	}
 }
 
+// TestBuildDependencyGraph_EscapedRefIgnored verifies that escaped references do not create dependency edges.
 func TestBuildDependencyGraph_EscapedRefIgnored(t *testing.T) {
 	config := makeDoc("config", "config.md")
 	main := &ast.Document{
@@ -615,6 +646,7 @@ func TestBuildDependencyGraph_EscapedRefIgnored(t *testing.T) {
 	}
 }
 
+// TestBuildDependencyGraph_PathRefsIgnored verifies that path-based references (containing /) do not create dependency edges.
 func TestBuildDependencyGraph_PathRefsIgnored(t *testing.T) {
 	// path refs (containing /) should not create dependency edges
 	main := &ast.Document{
@@ -632,6 +664,7 @@ func TestBuildDependencyGraph_PathRefsIgnored(t *testing.T) {
 	}
 }
 
+// TestBuildDependencyGraph_UsesDocNameAsID verifies that the document Name field is used as the graph node ID.
 func TestBuildDependencyGraph_UsesDocNameAsID(t *testing.T) {
 	doc := &ast.Document{
 		Name:        "my-doc",
@@ -648,6 +681,7 @@ func TestBuildDependencyGraph_UsesDocNameAsID(t *testing.T) {
 	}
 }
 
+// TestBuildDependencyGraph_UsesPathAsIDWhenNoName verifies that the file path is used as node ID when the document has no name.
 func TestBuildDependencyGraph_UsesPathAsIDWhenNoName(t *testing.T) {
 	doc := &ast.Document{
 		Name:        "",
@@ -665,6 +699,7 @@ func TestBuildDependencyGraph_UsesPathAsIDWhenNoName(t *testing.T) {
 
 // --- DetectCycles ---
 
+// TestDetectCycles_NoCycle verifies that a linear dependency chain (a->b->c) produces no cycle diagnostics.
 func TestDetectCycles_NoCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -679,6 +714,7 @@ func TestDetectCycles_NoCycle(t *testing.T) {
 	}
 }
 
+// TestDetectCycles_DirectCycle verifies that a two-node cycle (a<->b) is detected with E060.
 func TestDetectCycles_DirectCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -696,6 +732,7 @@ func TestDetectCycles_DirectCycle(t *testing.T) {
 	}
 }
 
+// TestDetectCycles_SelfCycle verifies that a self-referencing node (a->a) is detected with E060.
 func TestDetectCycles_SelfCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -712,6 +749,7 @@ func TestDetectCycles_SelfCycle(t *testing.T) {
 	}
 }
 
+// TestDetectCycles_IndirectCycle verifies that a three-node cycle (a->b->c->a) is detected.
 func TestDetectCycles_IndirectCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -727,6 +765,7 @@ func TestDetectCycles_IndirectCycle(t *testing.T) {
 	}
 }
 
+// TestDetectCycles_EmptyGraph verifies that an empty dependency graph produces no diagnostics.
 func TestDetectCycles_EmptyGraph(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{},
@@ -738,6 +777,7 @@ func TestDetectCycles_EmptyGraph(t *testing.T) {
 	}
 }
 
+// TestDetectCycles_DisconnectedNoCycle verifies that disconnected acyclic subgraphs produce no cycle diagnostics.
 func TestDetectCycles_DisconnectedNoCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -754,6 +794,7 @@ func TestDetectCycles_DisconnectedNoCycle(t *testing.T) {
 
 // --- resolveDocByNameOrPath ---
 
+// TestResolveDocByNameOrPath_ByName verifies that a document is found by its name in the workspace.
 func TestResolveDocByNameOrPath_ByName(t *testing.T) {
 	doc := makeDoc("config", "config.md")
 	ws := makeWorkspace(doc)
@@ -764,6 +805,7 @@ func TestResolveDocByNameOrPath_ByName(t *testing.T) {
 	}
 }
 
+// TestResolveDocByNameOrPath_ByPath verifies that a document is found by its exact file path.
 func TestResolveDocByNameOrPath_ByPath(t *testing.T) {
 	doc := makeDoc("", "docs/config.md")
 	ws := makeWorkspace(doc)
@@ -774,6 +816,7 @@ func TestResolveDocByNameOrPath_ByPath(t *testing.T) {
 	}
 }
 
+// TestResolveDocByNameOrPath_ByPathWithMd verifies that a path without .md extension is resolved by appending .md.
 func TestResolveDocByNameOrPath_ByPathWithMd(t *testing.T) {
 	doc := makeDoc("", "docs/config.md")
 	ws := makeWorkspace(doc)
@@ -784,6 +827,7 @@ func TestResolveDocByNameOrPath_ByPathWithMd(t *testing.T) {
 	}
 }
 
+// TestResolveDocByNameOrPath_NotFound verifies that a nonexistent name/path returns nil.
 func TestResolveDocByNameOrPath_NotFound(t *testing.T) {
 	ws := makeWorkspace()
 
@@ -795,6 +839,7 @@ func TestResolveDocByNameOrPath_NotFound(t *testing.T) {
 
 // --- findHeading ---
 
+// TestFindHeading_ByName verifies that a heading is found by its explicit name attribute.
 func TestFindHeading_ByName(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Introduction", Slug: "introduction", Name: "intro"},
@@ -806,6 +851,7 @@ func TestFindHeading_ByName(t *testing.T) {
 	}
 }
 
+// TestFindHeading_BySlug verifies that a heading is found by its auto-generated slug.
 func TestFindHeading_BySlug(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "My Section", Slug: "my-section"},
@@ -817,6 +863,7 @@ func TestFindHeading_BySlug(t *testing.T) {
 	}
 }
 
+// TestFindHeading_InChildren verifies that findHeading recursively searches child headings.
 func TestFindHeading_InChildren(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Root", Slug: "root", Children: []*ast.Heading{
@@ -830,6 +877,7 @@ func TestFindHeading_InChildren(t *testing.T) {
 	}
 }
 
+// TestFindHeading_NotFound verifies that a missing heading identifier returns nil.
 func TestFindHeading_NotFound(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Intro", Slug: "intro"},
@@ -841,6 +889,7 @@ func TestFindHeading_NotFound(t *testing.T) {
 	}
 }
 
+// TestFindHeading_EmptyList verifies that searching a nil heading list returns nil.
 func TestFindHeading_EmptyList(t *testing.T) {
 	result := findHeading(nil, "any")
 	if result != nil {
@@ -850,6 +899,7 @@ func TestFindHeading_EmptyList(t *testing.T) {
 
 // --- ResolveReference: edge cases ---
 
+// TestResolveReference_UnresolvedRawFallback verifies that a reference with empty PathPart falls back to E050 using raw text.
 func TestResolveReference_UnresolvedRawFallback(t *testing.T) {
 	// ref with empty PathPart should return E050 with raw
 	s := makeScope(map[string]ast.Variable{})
@@ -869,6 +919,7 @@ func TestResolveReference_UnresolvedRawFallback(t *testing.T) {
 	}
 }
 
+// TestResolveReference_DocVariableProtectedAccess verifies that accessing a protected variable from another document produces E054.
 func TestResolveReference_DocVariableProtectedAccess(t *testing.T) {
 	targetVars := []ast.Variable{
 		{Name: "internal", Access: ast.AccessProtected, Value: strVal("hidden")},
@@ -888,6 +939,7 @@ func TestResolveReference_DocVariableProtectedAccess(t *testing.T) {
 	}
 }
 
+// TestResolveReference_MultiplePublicVarsFirstMatch verifies that the correct variable is resolved among multiple public vars.
 func TestResolveReference_MultiplePublicVarsFirstMatch(t *testing.T) {
 	targetVars := []ast.Variable{
 		{Name: "port", Access: ast.AccessPublic, Value: numVal(8080)},

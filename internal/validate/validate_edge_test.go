@@ -1,3 +1,6 @@
+// Package validate edge-case tests cover deterministic diagnostic ordering,
+// combined error scenarios, escaped references, template satisfaction, hint
+// filtering, empty documents, and file-path propagation on diagnostics.
 package validate
 
 import (
@@ -8,7 +11,7 @@ import (
 
 // --- Edge case tests from Codex review ---
 
-// Verify AllDiagnostics produces deterministic ordering
+// TestAllDiagnostics_DeterministicOrder verifies that AllDiagnostics returns file diagnostics sorted by path for stable output.
 func TestAllDiagnostics_DeterministicOrder(t *testing.T) {
 	fileDiags := map[string][]ast.Diagnostic{
 		"c.md": {{Code: "E003"}},
@@ -39,7 +42,7 @@ func TestAllDiagnostics_DeterministicOrder(t *testing.T) {
 	}
 }
 
-// ValidateDocument with both scope errors and ref errors
+// TestValidateDocument_ScopeAndRefErrors verifies that duplicate-const and unresolved-ref errors are reported together.
 func TestValidateDocument_ScopeAndRefErrors(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "test.md",
@@ -66,7 +69,7 @@ func TestValidateDocument_ScopeAndRefErrors(t *testing.T) {
 	}
 }
 
-// ValidateDocument with escaped reference — should produce no error
+// TestValidateDocument_EscapedRefNoError verifies that an escaped reference is skipped and produces no diagnostic.
 func TestValidateDocument_EscapedRefNoError(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "test.md",
@@ -82,7 +85,7 @@ func TestValidateDocument_EscapedRefNoError(t *testing.T) {
 	}
 }
 
-// ValidateDocument: template valid contract
+// TestValidateDocument_TemplateContractSatisfied verifies that a child satisfying all template requirements produces no template errors.
 func TestValidateDocument_TemplateContractSatisfied(t *testing.T) {
 	tmpl := &ast.Document{
 		Name:       "base",
@@ -111,7 +114,7 @@ func TestValidateDocument_TemplateContractSatisfied(t *testing.T) {
 	}
 }
 
-// ValidateWorkspace: template + child combination
+// TestValidateWorkspace_TemplateChild verifies end-to-end workspace validation with a template and conforming child document.
 func TestValidateWorkspace_TemplateChild(t *testing.T) {
 	tmpl := &ast.Document{
 		Name:       "base",
@@ -147,7 +150,7 @@ func TestValidateWorkspace_TemplateChild(t *testing.T) {
 	}
 }
 
-// HasErrors with only hints
+// TestHasErrors_OnlyHints verifies that HasErrors returns false when only hint-severity diagnostics are present.
 func TestHasErrors_OnlyHints(t *testing.T) {
 	diags := []ast.Diagnostic{
 		{Severity: ast.SeverityHint},
@@ -157,7 +160,7 @@ func TestHasErrors_OnlyHints(t *testing.T) {
 	}
 }
 
-// FilterBySeverity for hints
+// TestFilterBySeverity_Hints verifies that filtering by hint severity correctly isolates hint diagnostics.
 func TestFilterBySeverity_Hints(t *testing.T) {
 	diags := []ast.Diagnostic{
 		{Severity: ast.SeverityError},
@@ -171,7 +174,7 @@ func TestFilterBySeverity_Hints(t *testing.T) {
 	}
 }
 
-// AllDiagnostics with only workspace diagnostics (no file diags)
+// TestAllDiagnostics_OnlyWsDiags verifies that AllDiagnostics works correctly with nil file diagnostics.
 func TestAllDiagnostics_OnlyWsDiags(t *testing.T) {
 	wsDiags := []ast.Diagnostic{{Code: "E060"}, {Code: "E061"}}
 	all := AllDiagnostics(nil, wsDiags)
@@ -180,7 +183,7 @@ func TestAllDiagnostics_OnlyWsDiags(t *testing.T) {
 	}
 }
 
-// AllDiagnostics with only file diagnostics (no ws diags)
+// TestAllDiagnostics_OnlyFileDiags verifies that AllDiagnostics works correctly with nil workspace diagnostics.
 func TestAllDiagnostics_OnlyFileDiags(t *testing.T) {
 	fileDiags := map[string][]ast.Diagnostic{
 		"a.md": {{Code: "E001"}},
@@ -191,7 +194,7 @@ func TestAllDiagnostics_OnlyFileDiags(t *testing.T) {
 	}
 }
 
-// ValidateDocument with empty source
+// TestValidateDocument_EmptySource verifies that a document with an empty source string produces no diagnostics.
 func TestValidateDocument_EmptySource(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "empty.md",
@@ -204,7 +207,7 @@ func TestValidateDocument_EmptySource(t *testing.T) {
 	}
 }
 
-// All diagnostics have file path set
+// TestValidateDocument_AllDiagsHaveFile verifies that every emitted diagnostic carries the correct file path.
 func TestValidateDocument_AllDiagsHaveFile(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "myfile.md",

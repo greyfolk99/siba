@@ -1,3 +1,5 @@
+// Package template edge-case tests cover boundary conditions for heading matching,
+// merge ordering, contract validation depth, slice aliasing, and variable override behavior.
 package template
 
 import (
@@ -8,7 +10,7 @@ import (
 
 // --- Edge case tests from Codex review ---
 
-// M1: @name should be authoritative — slug collision with different name should not match
+// TestMatchesHeading_NameAuthoritativeOverSlug verifies that @name takes precedence over slug when both headings have names.
 func TestMatchesHeading_NameAuthoritativeOverSlug(t *testing.T) {
 	tmplH := h(1, "Introduction", "introduction", "intro", ast.AnnotationRequired)
 	childH := h(1, "Conclusion", "introduction", "conclusion", ast.AnnotationRequired) // same slug, different name
@@ -18,7 +20,7 @@ func TestMatchesHeading_NameAuthoritativeOverSlug(t *testing.T) {
 	}
 }
 
-// M1: when target has no name, slug should still match
+// TestMatchesHeading_NoNameSlugMatch verifies that slug-based matching works when neither heading has a @name.
 func TestMatchesHeading_NoNameSlugMatch(t *testing.T) {
 	tmplH := h(1, "Introduction", "introduction", "", ast.AnnotationRequired) // no name
 	childH := h(1, "Different Text", "introduction", "", ast.AnnotationRequired)
@@ -28,7 +30,7 @@ func TestMatchesHeading_NoNameSlugMatch(t *testing.T) {
 	}
 }
 
-// m1: empty text/slug/name should not match
+// TestMatchesHeading_EmptyTargetSlugAndName verifies that two headings with all-empty fields still match by empty text.
 func TestMatchesHeading_EmptyTargetSlugAndName(t *testing.T) {
 	// when target has no name, no slug, but empty text matches
 	a := h(1, "", "", "", ast.AnnotationRequired)
@@ -40,7 +42,7 @@ func TestMatchesHeading_EmptyTargetSlugAndName(t *testing.T) {
 	}
 }
 
-// m6: MergeHeadings with required heading missing from child
+// TestMergeHeadings_RequiredMissing verifies that a missing @required heading is dropped while @default is kept in the merge.
 func TestMergeHeadings_RequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Required Section", "required-section", "", ast.AnnotationRequired),
@@ -58,7 +60,7 @@ func TestMergeHeadings_RequiredMissing(t *testing.T) {
 	}
 }
 
-// Multiple required headings missing
+// TestValidateContract_MultipleRequiredMissing verifies that each missing @required heading produces its own diagnostic.
 func TestValidateContract_MultipleRequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Section A", "section-a", "", ast.AnnotationRequired),
@@ -73,7 +75,7 @@ func TestValidateContract_MultipleRequiredMissing(t *testing.T) {
 	}
 }
 
-// m3: diagnostics should carry position info from headings
+// TestValidateContract_DiagnosticHasPosition verifies that the diagnostic for a missing heading carries the template position.
 func TestValidateContract_DiagnosticHasPosition(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		{Level: 1, Text: "Required", Slug: "required", Annotation: ast.AnnotationRequired,
@@ -90,6 +92,7 @@ func TestValidateContract_DiagnosticHasPosition(t *testing.T) {
 	}
 }
 
+// TestValidateContract_LevelMismatchDiagPosition verifies that a level-mismatch diagnostic points to the child heading position.
 func TestValidateContract_LevelMismatchDiagPosition(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Intro", "intro", "", ast.AnnotationRequired),
@@ -111,7 +114,7 @@ func TestValidateContract_LevelMismatchDiagPosition(t *testing.T) {
 	}
 }
 
-// MergeHeadings: child has extra nested headings
+// TestMergeHeadings_ChildExtraNestedHeadings verifies that extra child-only nested headings are preserved in the merge.
 func TestMergeHeadings_ChildExtraNestedHeadings(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Chapter", "chapter", "", ast.AnnotationRequired),
@@ -136,7 +139,7 @@ func TestMergeHeadings_ChildExtraNestedHeadings(t *testing.T) {
 	}
 }
 
-// InheritVariables: multiple overrides
+// TestInheritVariables_MultipleOverrides verifies that multiple child variables each override their template counterpart.
 func TestInheritVariables_MultipleOverrides(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
@@ -172,7 +175,7 @@ func TestInheritVariables_MultipleOverrides(t *testing.T) {
 	}
 }
 
-// Deeply nested heading validation (3 levels)
+// TestValidateContract_DeeplyNested verifies that contract validation recurses through three heading levels correctly.
 func TestValidateContract_DeeplyNested(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "L1", "l1", "", ast.AnnotationRequired,
@@ -201,7 +204,7 @@ func TestValidateContract_DeeplyNested(t *testing.T) {
 	}
 }
 
-// MergeHeadings order: template order first, then extras
+// TestMergeHeadings_OrderPreserved verifies that merged output follows template order first, with extras appended.
 func TestMergeHeadings_OrderPreserved(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "First", "first", "", ast.AnnotationRequired),
@@ -229,7 +232,7 @@ func TestMergeHeadings_OrderPreserved(t *testing.T) {
 	}
 }
 
-// ValidateContract: heading match by @name, level mismatch uses child text
+// TestValidateContract_LevelMismatchUsesChildText verifies that a level-mismatch E072 diagnostic references the child heading.
 func TestValidateContract_LevelMismatchUsesChildText(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Template Title", "template-title", "ch1", ast.AnnotationRequired),
@@ -250,7 +253,7 @@ func TestValidateContract_LevelMismatchUsesChildText(t *testing.T) {
 	}
 }
 
-// M2 (aliasing): verify merged output doesn't share slice with original
+// TestMergeHeadings_NoSliceAliasing verifies that mutating the merged result does not affect the original child slice.
 func TestMergeHeadings_NoSliceAliasing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
 		h(1, "Chapter", "chapter", "", ast.AnnotationRequired),

@@ -1,3 +1,5 @@
+// Package types tests verify type checking logic including assignment compatibility,
+// comparison operators, iterability checks, value comparison, and truthiness evaluation.
 package types
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/hjseo/siba/internal/ast"
 )
 
+// TestCheckAssignment_Match verifies that assigning a value whose type matches the variable's declared type produces no diagnostic.
 func TestCheckAssignment_Match(t *testing.T) {
 	v := ast.Variable{
 		Name: "port",
@@ -18,6 +21,7 @@ func TestCheckAssignment_Match(t *testing.T) {
 	}
 }
 
+// TestCheckAssignment_Mismatch verifies that assigning a string value to a number-typed variable produces an E030 diagnostic.
 func TestCheckAssignment_Mismatch(t *testing.T) {
 	v := ast.Variable{
 		Name: "port",
@@ -34,6 +38,7 @@ func TestCheckAssignment_Mismatch(t *testing.T) {
 	}
 }
 
+// TestCheckAssignment_NilType verifies that a variable with no type annotation (nil Type) accepts any value without error.
 func TestCheckAssignment_NilType(t *testing.T) {
 	v := ast.Variable{Name: "x", Type: nil}
 	val := ast.Value{Kind: ast.TypeString, Str: "anything"}
@@ -43,6 +48,7 @@ func TestCheckAssignment_NilType(t *testing.T) {
 	}
 }
 
+// TestCheckAssignment_AnyType verifies that a variable typed as "any" accepts values of any kind without error.
 func TestCheckAssignment_AnyType(t *testing.T) {
 	v := ast.Variable{
 		Name: "x",
@@ -55,6 +61,7 @@ func TestCheckAssignment_AnyType(t *testing.T) {
 	}
 }
 
+// TestCheckAssignment_ArrayType verifies that array assignment checks element types, accepting matching element types and rejecting mismatched ones.
 func TestCheckAssignment_ArrayType(t *testing.T) {
 	v := ast.Variable{
 		Name: "tags",
@@ -80,6 +87,7 @@ func TestCheckAssignment_ArrayType(t *testing.T) {
 	}
 }
 
+// TestCheckAssignment_UnionType verifies that union types accept values matching any member type and reject values that match none.
 func TestCheckAssignment_UnionType(t *testing.T) {
 	v := ast.Variable{
 		Name: "x",
@@ -103,6 +111,7 @@ func TestCheckAssignment_UnionType(t *testing.T) {
 	}
 }
 
+// TestCheckComparison_EqualityAnyTypes verifies that equality operators (== and !=) are allowed between values of any types without error.
 func TestCheckComparison_EqualityAnyTypes(t *testing.T) {
 	// == and != work on any types
 	a := ast.Value{Kind: ast.TypeString, Str: "hello"}
@@ -116,6 +125,7 @@ func TestCheckComparison_EqualityAnyTypes(t *testing.T) {
 	}
 }
 
+// TestCheckComparison_OrderedSameType verifies that ordering operators (>, <, >=, <=) are allowed when both operands have the same type.
 func TestCheckComparison_OrderedSameType(t *testing.T) {
 	a := ast.Value{Kind: ast.TypeNumber, Num: 1}
 	b := ast.Value{Kind: ast.TypeNumber, Num: 2}
@@ -127,6 +137,7 @@ func TestCheckComparison_OrderedSameType(t *testing.T) {
 	}
 }
 
+// TestCheckComparison_OrderedDifferentTypes verifies that ordering operators between different types (e.g., string > number) produce an E031 diagnostic.
 func TestCheckComparison_OrderedDifferentTypes(t *testing.T) {
 	a := ast.Value{Kind: ast.TypeString, Str: "a"}
 	b := ast.Value{Kind: ast.TypeNumber, Num: 1}
@@ -140,6 +151,7 @@ func TestCheckComparison_OrderedDifferentTypes(t *testing.T) {
 	}
 }
 
+// TestCheckComparison_OrderedOnBoolean verifies that ordering operators on boolean values produce an E032 diagnostic, since booleans are not orderable.
 func TestCheckComparison_OrderedOnBoolean(t *testing.T) {
 	a := ast.Value{Kind: ast.TypeBoolean, Bool: true}
 	b := ast.Value{Kind: ast.TypeBoolean, Bool: false}
@@ -153,6 +165,7 @@ func TestCheckComparison_OrderedOnBoolean(t *testing.T) {
 	}
 }
 
+// TestCheckIterable_Array verifies that array values pass the iterability check without error.
 func TestCheckIterable_Array(t *testing.T) {
 	val := ast.Value{Kind: ast.TypeArray, Array: []ast.Value{{Kind: ast.TypeString, Str: "a"}}}
 	if d := CheckIterable(val); d != nil {
@@ -160,6 +173,7 @@ func TestCheckIterable_Array(t *testing.T) {
 	}
 }
 
+// TestCheckIterable_NonArray verifies that non-array types (string, number, object, boolean, null) produce an E033 diagnostic when checked for iterability.
 func TestCheckIterable_NonArray(t *testing.T) {
 	for _, val := range []ast.Value{
 		{Kind: ast.TypeString, Str: "not array"},
@@ -178,6 +192,7 @@ func TestCheckIterable_NonArray(t *testing.T) {
 	}
 }
 
+// TestCompareValues_Equality verifies that CompareValues correctly evaluates == and != for same-type and cross-type value pairs.
 func TestCompareValues_Equality(t *testing.T) {
 	tests := []struct {
 		a, b   ast.Value
@@ -206,6 +221,7 @@ func TestCompareValues_Equality(t *testing.T) {
 	}
 }
 
+// TestCompareValues_Ordered verifies that CompareValues correctly evaluates ordering operators (>, <, >=, <=) for numbers and strings.
 func TestCompareValues_Ordered(t *testing.T) {
 	tests := []struct {
 		a, b   ast.Value
@@ -232,6 +248,7 @@ func TestCompareValues_Ordered(t *testing.T) {
 	}
 }
 
+// TestCompareValues_UnknownOperator verifies that CompareValues returns an error when given an unrecognized operator.
 func TestCompareValues_UnknownOperator(t *testing.T) {
 	a := ast.Value{Kind: ast.TypeNumber, Num: 1}
 	_, err := CompareValues(a, a, "??")
@@ -240,6 +257,7 @@ func TestCompareValues_UnknownOperator(t *testing.T) {
 	}
 }
 
+// TestTruthyValue verifies the truthiness rules: false/empty-string/zero/null/empty-collections are falsy, all others are truthy.
 func TestTruthyValue(t *testing.T) {
 	tests := []struct {
 		val    ast.Value

@@ -1,3 +1,6 @@
+// Package parser provides tests for the siba markdown directive parser,
+// covering directive extraction, heading tree construction, slug generation,
+// full document parsing, control block handling, and diagnostic validation.
 package parser
 
 import (
@@ -6,6 +9,8 @@ import (
 	"github.com/hjseo/siba/internal/ast"
 )
 
+// TestParseDirectives verifies that ParseDirectives correctly extracts all directive kinds
+// (@doc, @const, @let, @default) and their arguments from raw markdown source.
 func TestParseDirectives(t *testing.T) {
 	source := `<!-- @doc test-doc -->
 <!-- @const name = "hello" -->
@@ -41,6 +46,8 @@ some text
 	}
 }
 
+// TestParseHeadings verifies that headings are parsed and assembled into a correct
+// parent-child tree structure via BuildHeadingTree.
 func TestParseHeadings(t *testing.T) {
 	source := `# Top
 ## Section A
@@ -76,6 +83,8 @@ func TestParseHeadings(t *testing.T) {
 	}
 }
 
+// TestGenerateSlug verifies that GenerateSlug lowercases text, strips special characters,
+// and joins words with hyphens to produce URL-safe slugs.
 func TestGenerateSlug(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -95,6 +104,8 @@ func TestGenerateSlug(t *testing.T) {
 	}
 }
 
+// TestParseDocument verifies that ParseDocument produces a complete Document with the
+// correct name, variables, template references, heading tree, and zero diagnostics.
 func TestParseDocument(t *testing.T) {
 	source := `<!-- @doc payment-api -->
 <!-- @const service-name = "payment-api" -->
@@ -131,6 +142,8 @@ func TestParseDocument(t *testing.T) {
 	}
 }
 
+// TestControlBlocks verifies that @if/@endif and @for/@endfor control blocks are
+// parsed with the correct kind, condition, iterator, and collection fields.
 func TestControlBlocks(t *testing.T) {
 	source := `<!-- @if env == "production" -->
 ## Prod Config
@@ -162,6 +175,8 @@ func TestControlBlocks(t *testing.T) {
 	}
 }
 
+// TestUnmatchedControlBlocks verifies that an unclosed @if block without a matching
+// @endif produces an E012 diagnostic.
 func TestUnmatchedControlBlocks(t *testing.T) {
 	source := `<!-- @if env == "production" -->
 ## Prod Config
@@ -182,6 +197,8 @@ func TestUnmatchedControlBlocks(t *testing.T) {
 	}
 }
 
+// TestDocTemplateExclusive verifies that using both @doc and @template in the same
+// file produces an E001 diagnostic, since they are mutually exclusive.
 func TestDocTemplateExclusive(t *testing.T) {
 	source := `<!-- @doc my-doc -->
 <!-- @template my-tmpl -->
@@ -200,6 +217,8 @@ func TestDocTemplateExclusive(t *testing.T) {
 	}
 }
 
+// TestTemplateRequiresName verifies that a @template directive without a name argument
+// produces an E002 diagnostic.
 func TestTemplateRequiresName(t *testing.T) {
 	source := `<!-- @template -->
 # Test`
@@ -217,6 +236,8 @@ func TestTemplateRequiresName(t *testing.T) {
 	}
 }
 
+// TestTemplateWithName verifies that a valid @template directive with a name sets
+// the document Name and IsTemplate fields correctly without producing diagnostics.
 func TestTemplateWithName(t *testing.T) {
 	source := `<!-- @template api-spec -->
 # API Spec

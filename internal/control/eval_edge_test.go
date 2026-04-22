@@ -1,3 +1,7 @@
+// eval_edge_test.go tests edge cases and boundary conditions for the control-flow
+// evaluation logic: operator-like characters inside string literals, nil values,
+// negative numbers, diagnostic propagation, iterator shadowing, cross-type
+// comparison, and ValueToString formatting for all types.
 package control
 
 import (
@@ -10,6 +14,7 @@ import (
 
 // --- Edge case tests from review ---
 
+// TestParseCondition_OperatorInStringLiteral verifies that operator characters (==, !=, >, <=) inside quoted string literals are not mistaken for condition operators.
 func TestParseCondition_OperatorInStringLiteral(t *testing.T) {
 	tests := []struct {
 		input               string
@@ -30,6 +35,7 @@ func TestParseCondition_OperatorInStringLiteral(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_VariableNoValue verifies that a variable with a nil value in a truthy check produces diagnostic E043.
 func TestEvaluateIf_VariableNoValue(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"x": {Name: "x", Mutability: ast.MutConst, Value: nil},
@@ -43,6 +49,7 @@ func TestEvaluateIf_VariableNoValue(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_NumberLiteralComparison verifies that == correctly compares a numeric variable against an unquoted number literal.
 func TestEvaluateIf_NumberLiteralComparison(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"count": {Name: "count", Mutability: ast.MutConst, Value: numVal(5)},
@@ -56,6 +63,7 @@ func TestEvaluateIf_NumberLiteralComparison(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_NegativeNumber verifies that conditions involving negative number values evaluate correctly.
 func TestEvaluateIf_NegativeNumber(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"temp": {Name: "temp", Mutability: ast.MutConst, Value: numVal(-10)},
@@ -69,6 +77,7 @@ func TestEvaluateIf_NegativeNumber(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_IfDiagnosticPropagated verifies that diagnostics from a failing @if condition are surfaced through ProcessControlBlocks.
 func TestProcessControlBlocks_IfDiagnosticPropagated(t *testing.T) {
 	content := "before\n<!-- @if undefined_var == \"x\" -->\ncontent\n<!-- @endif -->\nafter"
 	blocks := []ast.ControlBlock{
@@ -88,6 +97,7 @@ func TestProcessControlBlocks_IfDiagnosticPropagated(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_ForDiagnosticPropagated verifies that diagnostics from a failing @for evaluation are surfaced through ProcessControlBlocks.
 func TestProcessControlBlocks_ForDiagnosticPropagated(t *testing.T) {
 	content := "before\n<!-- @for x in y -->\ncontent\n<!-- @endfor -->\nafter"
 	blocks := []ast.ControlBlock{
@@ -112,6 +122,7 @@ func TestProcessControlBlocks_ForDiagnosticPropagated(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_IteratorShadowsParent verifies that the iterator variable shadows a same-named parent variable without mutating the parent scope.
 func TestEvaluateFor_IteratorShadowsParent(t *testing.T) {
 	parent := makeScope(map[string]ast.Variable{
 		"item": {Name: "item", Mutability: ast.MutLet, Value: strVal("parent_val")},
@@ -134,6 +145,7 @@ func TestEvaluateFor_IteratorShadowsParent(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_ForPropertyAccess verifies end-to-end @for expansion with dot-notation property substitution in the template body.
 func TestProcessControlBlocks_ForPropertyAccess(t *testing.T) {
 	content := "list:\n<!-- @for x in data -->\n- {{x.key}}: {{x.val}}\n<!-- @endfor -->\nend"
 	blocks := []ast.ControlBlock{
@@ -167,6 +179,7 @@ func TestProcessControlBlocks_ForPropertyAccess(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_EmptyCondition verifies that an empty condition string produces a diagnostic rather than a panic.
 func TestEvaluateIf_EmptyCondition(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	_, diag := EvaluateIf("", s)
@@ -175,6 +188,7 @@ func TestEvaluateIf_EmptyCondition(t *testing.T) {
 	}
 }
 
+// TestCompareValues_DifferentTypesEquality verifies that == between different types (string vs number) returns false without error.
 func TestCompareValues_DifferentTypesEquality(t *testing.T) {
 	a := ast.Value{Kind: ast.TypeString, Str: "42"}
 	b := ast.Value{Kind: ast.TypeNumber, Num: 42}
@@ -187,6 +201,7 @@ func TestCompareValues_DifferentTypesEquality(t *testing.T) {
 	}
 }
 
+// TestValueToString_EmptyRaw verifies that ValueToString for numbers with an empty Raw field still produces a correct decimal string.
 func TestValueToString_EmptyRaw(t *testing.T) {
 	// Number with empty Raw should still produce correct string
 	v := ast.Value{Kind: ast.TypeNumber, Num: 42}
@@ -203,6 +218,7 @@ func TestValueToString_EmptyRaw(t *testing.T) {
 	}
 }
 
+// TestValueToString_AllTypes verifies that ValueToString produces the expected string representation for every supported value type.
 func TestValueToString_AllTypes(t *testing.T) {
 	tests := []struct {
 		val    ast.Value

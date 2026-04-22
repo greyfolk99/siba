@@ -1,3 +1,7 @@
+// eval_test.go tests the core control-flow evaluation logic:
+// condition parsing (parseCondition), conditional evaluation (EvaluateIf),
+// loop evaluation (EvaluateFor), and end-to-end control block processing
+// (ProcessControlBlocks) for @if/@for directives.
 package control
 
 import (
@@ -35,6 +39,7 @@ func boolVal(b bool) *ast.Value {
 
 // --- EvaluateIf tests ---
 
+// TestEvaluateIf_StringEquality verifies that @if with == operator correctly matches two equal string values.
 func TestEvaluateIf_StringEquality(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"env": {Name: "env", Mutability: ast.MutConst, Value: strVal("production")},
@@ -49,6 +54,7 @@ func TestEvaluateIf_StringEquality(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_StringInequality verifies that == returns false when the variable value does not match the literal.
 func TestEvaluateIf_StringInequality(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"env": {Name: "env", Mutability: ast.MutConst, Value: strVal("staging")},
@@ -63,6 +69,7 @@ func TestEvaluateIf_StringInequality(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_NumberComparison verifies all numeric comparison operators (>, <, >=, <=) against a number variable.
 func TestEvaluateIf_NumberComparison(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"port": {Name: "port", Mutability: ast.MutConst, Value: numVal(8080)},
@@ -90,6 +97,7 @@ func TestEvaluateIf_NumberComparison(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_NotEqual verifies that the != operator returns true when the variable differs from the literal.
 func TestEvaluateIf_NotEqual(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"env": {Name: "env", Mutability: ast.MutConst, Value: strVal("staging")},
@@ -104,6 +112,7 @@ func TestEvaluateIf_NotEqual(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_TruthyCheck verifies truthiness evaluation for all value types (bool, string, number) without an operator.
 func TestEvaluateIf_TruthyCheck(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -133,6 +142,7 @@ func TestEvaluateIf_TruthyCheck(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_UndefinedVariable verifies that referencing an undeclared variable produces diagnostic E044.
 func TestEvaluateIf_UndefinedVariable(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 
@@ -145,6 +155,7 @@ func TestEvaluateIf_UndefinedVariable(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_PropertyAccess verifies that dot-notation property access (e.g., config.env) works in conditions.
 func TestEvaluateIf_PropertyAccess(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"config": {
@@ -168,6 +179,7 @@ func TestEvaluateIf_PropertyAccess(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_BoolLiteral verifies that comparing a boolean variable against the literal true works correctly.
 func TestEvaluateIf_BoolLiteral(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"enabled": {Name: "enabled", Mutability: ast.MutConst, Value: boolVal(true)},
@@ -182,6 +194,7 @@ func TestEvaluateIf_BoolLiteral(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_NullComparison verifies that comparing a null-typed variable against the null literal returns true.
 func TestEvaluateIf_NullComparison(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"x": {Name: "x", Mutability: ast.MutConst, Value: &ast.Value{Kind: ast.TypeNull, IsNull: true, Raw: "null"}},
@@ -196,6 +209,7 @@ func TestEvaluateIf_NullComparison(t *testing.T) {
 	}
 }
 
+// TestEvaluateIf_TwoVariables verifies that a condition comparing two scope variables (a < b) evaluates correctly.
 func TestEvaluateIf_TwoVariables(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"a": {Name: "a", Mutability: ast.MutConst, Value: numVal(10)},
@@ -213,6 +227,7 @@ func TestEvaluateIf_TwoVariables(t *testing.T) {
 
 // --- EvaluateFor tests ---
 
+// TestEvaluateFor_StringArray verifies that iterating over a string array produces one scope per element with the correct value.
 func TestEvaluateFor_StringArray(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"items": {
@@ -250,6 +265,7 @@ func TestEvaluateFor_StringArray(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_ObjectArray verifies that iterating over an array of objects exposes object properties on the iterator variable.
 func TestEvaluateFor_ObjectArray(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"endpoints": {
@@ -292,6 +308,7 @@ func TestEvaluateFor_ObjectArray(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_UndefinedCollection verifies that referencing an undeclared collection produces diagnostic E041.
 func TestEvaluateFor_UndefinedCollection(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 
@@ -304,6 +321,7 @@ func TestEvaluateFor_UndefinedCollection(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_NonArrayCollection verifies that using a non-array value as a @for collection produces diagnostic E033.
 func TestEvaluateFor_NonArrayCollection(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"x": {Name: "x", Mutability: ast.MutConst, Value: strVal("not an array")},
@@ -318,6 +336,7 @@ func TestEvaluateFor_NonArrayCollection(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_EmptyArray verifies that iterating over an empty array yields zero iterations and no error.
 func TestEvaluateFor_EmptyArray(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"items": {
@@ -336,6 +355,7 @@ func TestEvaluateFor_EmptyArray(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_ParentScopeVisible verifies that variables from the parent scope remain accessible inside @for iteration scopes.
 func TestEvaluateFor_ParentScopeVisible(t *testing.T) {
 	parent := makeScope(map[string]ast.Variable{
 		"title": {Name: "title", Mutability: ast.MutConst, Value: strVal("My Doc")},
@@ -358,6 +378,7 @@ func TestEvaluateFor_ParentScopeVisible(t *testing.T) {
 	}
 }
 
+// TestEvaluateFor_NilValue verifies that a collection variable with a nil value produces diagnostic E042.
 func TestEvaluateFor_NilValue(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"items": {Name: "items", Mutability: ast.MutConst, Value: nil},
@@ -374,6 +395,7 @@ func TestEvaluateFor_NilValue(t *testing.T) {
 
 // --- parseCondition tests ---
 
+// TestParseCondition verifies that parseCondition correctly splits conditions into left operand, operator, and right operand across all supported operators and whitespace variants.
 func TestParseCondition(t *testing.T) {
 	tests := []struct {
 		input         string
@@ -400,6 +422,7 @@ func TestParseCondition(t *testing.T) {
 
 // --- ProcessControlBlocks tests ---
 
+// TestProcessControlBlocks_IfTrue verifies that @if blocks with a true condition include their body content in the output.
 func TestProcessControlBlocks_IfTrue(t *testing.T) {
 	content := "before\n<!-- @if env == \"production\" -->\nproduction content\n<!-- @endif -->\nafter"
 	blocks := []ast.ControlBlock{
@@ -425,6 +448,7 @@ func TestProcessControlBlocks_IfTrue(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_IfFalse verifies that @if blocks with a false condition strip their body content from the output.
 func TestProcessControlBlocks_IfFalse(t *testing.T) {
 	content := "before\n<!-- @if env == \"production\" -->\nproduction content\n<!-- @endif -->\nafter"
 	blocks := []ast.ControlBlock{
@@ -450,6 +474,7 @@ func TestProcessControlBlocks_IfFalse(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_ForLoop verifies that @for expands the body template once per array element with variable substitution.
 func TestProcessControlBlocks_ForLoop(t *testing.T) {
 	content := "before\n<!-- @for item in items -->\n- {{item}}\n<!-- @endfor -->\nafter"
 	blocks := []ast.ControlBlock{
@@ -483,6 +508,7 @@ func TestProcessControlBlocks_ForLoop(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_ForObjectArray verifies that @for over an object array correctly substitutes dot-notation property references in the body.
 func TestProcessControlBlocks_ForObjectArray(t *testing.T) {
 	content := "before\n<!-- @for ep in endpoints -->\n### {{ep.name}}\npath: {{ep.path}}\n<!-- @endfor -->\nafter"
 	blocks := []ast.ControlBlock{
@@ -522,6 +548,7 @@ func TestProcessControlBlocks_ForObjectArray(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_NoBlocks verifies that content is returned unchanged when no control blocks are present.
 func TestProcessControlBlocks_NoBlocks(t *testing.T) {
 	content := "hello\nworld"
 	result, _ := ProcessControlBlocks(content, nil, nil)
@@ -530,6 +557,7 @@ func TestProcessControlBlocks_NoBlocks(t *testing.T) {
 	}
 }
 
+// TestProcessControlBlocks_EmptyForLoop verifies that @for over an empty array removes the block entirely, producing no body output.
 func TestProcessControlBlocks_EmptyForLoop(t *testing.T) {
 	content := "before\n<!-- @for item in items -->\n- {{item}}\n<!-- @endfor -->\nafter"
 	blocks := []ast.ControlBlock{

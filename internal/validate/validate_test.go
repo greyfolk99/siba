@@ -1,3 +1,6 @@
+// Package validate tests verify document-level and workspace-level validation,
+// including reference resolution, duplicate variable detection, template contract
+// enforcement, circular reference detection, and diagnostic filtering utilities.
 package validate
 
 import (
@@ -39,6 +42,7 @@ func makeWorkspace(docs ...*ast.Document) *workspace.Workspace {
 
 // --- ValidateDocument ---
 
+// TestValidateDocument_NoIssues verifies that a well-formed document with resolved references produces no diagnostics.
 func TestValidateDocument_NoIssues(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "test.md",
@@ -57,6 +61,7 @@ func TestValidateDocument_NoIssues(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_UnresolvedRef verifies that an unresolved reference produces an E050 diagnostic.
 func TestValidateDocument_UnresolvedRef(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "test.md",
@@ -82,6 +87,7 @@ func TestValidateDocument_UnresolvedRef(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_DuplicateConst verifies that declaring the same const variable twice produces an E020 diagnostic.
 func TestValidateDocument_DuplicateConst(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "test.md",
@@ -105,6 +111,7 @@ func TestValidateDocument_DuplicateConst(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_SetsFilePath verifies that every diagnostic carries the correct file path from the document.
 func TestValidateDocument_SetsFilePath(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "docs/api.md",
@@ -122,6 +129,7 @@ func TestValidateDocument_SetsFilePath(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_TemplateValidation verifies that a child missing a required template heading gets an E070 diagnostic.
 func TestValidateDocument_TemplateValidation(t *testing.T) {
 	tmpl := &ast.Document{
 		Name:       "base",
@@ -153,6 +161,7 @@ func TestValidateDocument_TemplateValidation(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_TemplateNotFound verifies that extending a nonexistent template produces an E071 diagnostic.
 func TestValidateDocument_TemplateNotFound(t *testing.T) {
 	child := &ast.Document{
 		Name:        "child",
@@ -175,6 +184,7 @@ func TestValidateDocument_TemplateNotFound(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_NoExtends_SkipsTemplate verifies that a standalone document skips template validation entirely.
 func TestValidateDocument_NoExtends_SkipsTemplate(t *testing.T) {
 	doc := &ast.Document{
 		Path:   "standalone.md",
@@ -188,6 +198,7 @@ func TestValidateDocument_NoExtends_SkipsTemplate(t *testing.T) {
 	}
 }
 
+// TestValidateDocument_NoWorkspace_SkipsTemplate verifies that a nil workspace gracefully skips template validation without panic.
 func TestValidateDocument_NoWorkspace_SkipsTemplate(t *testing.T) {
 	doc := &ast.Document{
 		Path:        "child.md",
@@ -203,6 +214,7 @@ func TestValidateDocument_NoWorkspace_SkipsTemplate(t *testing.T) {
 
 // --- ValidateWorkspace ---
 
+// TestValidateWorkspace_NoIssues verifies that a clean workspace with one valid document produces no diagnostics.
 func TestValidateWorkspace_NoIssues(t *testing.T) {
 	doc := &ast.Document{
 		Name:   "main",
@@ -220,6 +232,7 @@ func TestValidateWorkspace_NoIssues(t *testing.T) {
 	}
 }
 
+// TestValidateWorkspace_CircularRef verifies that mutually referencing documents produce an E060 circular reference diagnostic.
 func TestValidateWorkspace_CircularRef(t *testing.T) {
 	docA := &ast.Document{
 		Name: "a",
@@ -252,6 +265,7 @@ func TestValidateWorkspace_CircularRef(t *testing.T) {
 	}
 }
 
+// TestValidateWorkspace_MultipleFiles verifies that diagnostics are correctly partitioned by file path.
 func TestValidateWorkspace_MultipleFiles(t *testing.T) {
 	good := &ast.Document{
 		Name:   "good",
@@ -277,6 +291,7 @@ func TestValidateWorkspace_MultipleFiles(t *testing.T) {
 	}
 }
 
+// TestValidateWorkspace_EmptyWorkspace verifies that an empty workspace produces no diagnostics.
 func TestValidateWorkspace_EmptyWorkspace(t *testing.T) {
 	ws := makeWorkspace()
 
@@ -291,6 +306,7 @@ func TestValidateWorkspace_EmptyWorkspace(t *testing.T) {
 
 // --- HasErrors ---
 
+// TestHasErrors_WithErrors verifies that HasErrors returns true when at least one error-severity diagnostic exists.
 func TestHasErrors_WithErrors(t *testing.T) {
 	diags := []ast.Diagnostic{
 		{Severity: ast.SeverityWarning},
@@ -301,6 +317,7 @@ func TestHasErrors_WithErrors(t *testing.T) {
 	}
 }
 
+// TestHasErrors_NoErrors verifies that HasErrors returns false when only warnings and info diagnostics are present.
 func TestHasErrors_NoErrors(t *testing.T) {
 	diags := []ast.Diagnostic{
 		{Severity: ast.SeverityWarning},
@@ -311,6 +328,7 @@ func TestHasErrors_NoErrors(t *testing.T) {
 	}
 }
 
+// TestHasErrors_Empty verifies that HasErrors returns false for a nil diagnostic slice.
 func TestHasErrors_Empty(t *testing.T) {
 	if HasErrors(nil) {
 		t.Fatal("expected false for nil")
@@ -319,6 +337,7 @@ func TestHasErrors_Empty(t *testing.T) {
 
 // --- FilterBySeverity ---
 
+// TestFilterBySeverity verifies that filtering by severity returns only diagnostics of the requested level.
 func TestFilterBySeverity(t *testing.T) {
 	diags := []ast.Diagnostic{
 		{Severity: ast.SeverityError, Code: "E001"},
@@ -338,6 +357,7 @@ func TestFilterBySeverity(t *testing.T) {
 	}
 }
 
+// TestFilterBySeverity_Empty verifies that filtering a nil slice returns an empty result.
 func TestFilterBySeverity_Empty(t *testing.T) {
 	result := FilterBySeverity(nil, ast.SeverityError)
 	if len(result) != 0 {
@@ -347,6 +367,7 @@ func TestFilterBySeverity_Empty(t *testing.T) {
 
 // --- AllDiagnostics ---
 
+// TestAllDiagnostics verifies that file-level and workspace-level diagnostics are correctly combined.
 func TestAllDiagnostics(t *testing.T) {
 	fileDiags := map[string][]ast.Diagnostic{
 		"a.md": {{Code: "E001"}, {Code: "E002"}},
@@ -360,6 +381,7 @@ func TestAllDiagnostics(t *testing.T) {
 	}
 }
 
+// TestAllDiagnostics_Empty verifies that combining nil file and workspace diagnostics returns an empty slice.
 func TestAllDiagnostics_Empty(t *testing.T) {
 	all := AllDiagnostics(nil, nil)
 	if len(all) != 0 {

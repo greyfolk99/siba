@@ -1,3 +1,5 @@
+// Package refs edge-case tests exercise boundary conditions and uncommon
+// code paths in reference resolution, cycle detection, and dependency graphs.
 package refs
 
 import (
@@ -11,7 +13,7 @@ import (
 
 // --- Edge case tests from Codex review ---
 
-// C3: nil Value on local variable
+// TestResolveReference_LocalVariableNilValue verifies that a local variable with nil Value produces E050.
 func TestResolveReference_LocalVariableNilValue(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"title": {Name: "title", Value: nil},
@@ -28,7 +30,7 @@ func TestResolveReference_LocalVariableNilValue(t *testing.T) {
 	}
 }
 
-// C3: nil Value on doc variable
+// TestResolveReference_DocVariableNilValue verifies that a public doc variable with nil Value produces E054.
 func TestResolveReference_DocVariableNilValue(t *testing.T) {
 	targetVars := []ast.Variable{
 		{Name: "port", Access: ast.AccessPublic, Value: nil},
@@ -48,7 +50,7 @@ func TestResolveReference_DocVariableNilValue(t *testing.T) {
 	}
 }
 
-// M4: nil currentDoc on local section reference
+// TestResolveReference_NilCurrentDocSectionRef verifies that a section reference with nil currentDoc produces E050.
 func TestResolveReference_NilCurrentDocSectionRef(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("#intro", "", "intro", "", 1)
@@ -62,7 +64,7 @@ func TestResolveReference_NilCurrentDocSectionRef(t *testing.T) {
 	}
 }
 
-// M5: local object property access without workspace
+// TestResolveReference_LocalObjectPropertyNoWorkspace verifies that local object property access works without a workspace.
 func TestResolveReference_LocalObjectPropertyNoWorkspace(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"settings": {
@@ -90,7 +92,7 @@ func TestResolveReference_LocalObjectPropertyNoWorkspace(t *testing.T) {
 	}
 }
 
-// C2: multiple independent cycles should all be detected
+// TestDetectCycles_MultipleCycles verifies that multiple independent cycles each produce separate diagnostics.
 func TestDetectCycles_MultipleCycles(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -112,7 +114,7 @@ func TestDetectCycles_MultipleCycles(t *testing.T) {
 	}
 }
 
-// C1: verify cycle path is correctly reported (not corrupted by slice aliasing)
+// TestDetectCycles_PathCorrectness verifies that the reported cycle path contains all nodes and uses arrow notation.
 func TestDetectCycles_PathCorrectness(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -137,7 +139,7 @@ func TestDetectCycles_PathCorrectness(t *testing.T) {
 	}
 }
 
-// Leaf node in graph (node referenced but has no outgoing edges)
+// TestDetectCycles_LeafNode verifies that a graph with a leaf node (no outgoing edges) produces no cycle.
 func TestDetectCycles_LeafNode(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -152,7 +154,7 @@ func TestDetectCycles_LeafNode(t *testing.T) {
 	}
 }
 
-// Diamond graph: a→b, a→c, b→d, c→d (no cycle)
+// TestDetectCycles_Diamond verifies that a diamond-shaped DAG (a->b,c; b->d; c->d) has no cycle.
 func TestDetectCycles_Diamond(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -168,7 +170,7 @@ func TestDetectCycles_Diamond(t *testing.T) {
 	}
 }
 
-// Node with multiple outgoing edges, one forming a cycle
+// TestDetectCycles_MultiEdgeWithCycle verifies that a cycle is detected when one of multiple outgoing edges forms a loop.
 func TestDetectCycles_MultiEdgeWithCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -183,7 +185,7 @@ func TestDetectCycles_MultiEdgeWithCycle(t *testing.T) {
 	}
 }
 
-// Validate cross-doc section with both name and slug available
+// TestResolveReference_CrossDocSectionBySlug verifies that a cross-document section reference resolves by heading slug.
 func TestResolveReference_CrossDocSectionBySlug(t *testing.T) {
 	targetHeadings := []*ast.Heading{
 		{Level: 1, Text: "Getting Started", Slug: "getting-started"},
@@ -203,7 +205,7 @@ func TestResolveReference_CrossDocSectionBySlug(t *testing.T) {
 	}
 }
 
-// Cross-doc section not found
+// TestResolveReference_CrossDocSectionNotFound verifies that a cross-doc section ref to a missing heading produces E053.
 func TestResolveReference_CrossDocSectionNotFound(t *testing.T) {
 	targetHeadings := []*ast.Heading{
 		{Level: 1, Text: "Intro", Slug: "intro"},
@@ -223,7 +225,7 @@ func TestResolveReference_CrossDocSectionNotFound(t *testing.T) {
 	}
 }
 
-// Validate all references: multiple errors collected
+// TestValidateReferences_MultipleErrors verifies that all invalid references are collected into separate diagnostics.
 func TestValidateReferences_MultipleErrors(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	doc := &ast.Document{
@@ -241,7 +243,7 @@ func TestValidateReferences_MultipleErrors(t *testing.T) {
 	}
 }
 
-// BuildDependencyGraph: both @extends and ref from same doc
+// TestBuildDependencyGraph_ExtendsAndRef verifies that a doc with both @extends and a reference creates two dependency edges.
 func TestBuildDependencyGraph_ExtendsAndRef(t *testing.T) {
 	base := makeDoc("base", "base.md")
 	utils := makeDoc("utils", "utils.md")
@@ -269,7 +271,7 @@ func TestBuildDependencyGraph_ExtendsAndRef(t *testing.T) {
 	}
 }
 
-// BuildDependencyGraph: ref to non-existent doc creates no edge
+// TestBuildDependencyGraph_RefToNonexistentDoc verifies that a reference to a nonexistent document creates no edge.
 func TestBuildDependencyGraph_RefToNonexistentDoc(t *testing.T) {
 	main := &ast.Document{
 		Name: "main",
@@ -286,7 +288,7 @@ func TestBuildDependencyGraph_RefToNonexistentDoc(t *testing.T) {
 	}
 }
 
-// ResolveReference: doc found by path via resolveDocByNameOrPath
+// TestResolveReference_CrossDocVarByPath verifies that a cross-doc variable reference resolves via file path lookup.
 func TestResolveReference_CrossDocVarByPath(t *testing.T) {
 	targetVars := []ast.Variable{
 		{Name: "host", Access: ast.AccessPublic, Value: strVal("example.com")},
@@ -314,7 +316,7 @@ func TestResolveReference_CrossDocVarByPath(t *testing.T) {
 	}
 }
 
-// ResolveReference: scope line-based resolution
+// TestResolveReference_ScopeLineResolution verifies that variable visibility is determined by scope line ranges.
 func TestResolveReference_ScopeLineResolution(t *testing.T) {
 	root := scope.NewScope("root", scope.ScopeHeading, nil)
 	root.StartLine = 1
@@ -345,7 +347,7 @@ func TestResolveReference_ScopeLineResolution(t *testing.T) {
 	}
 }
 
-// Empty headings list for section reference
+// TestResolveReference_SectionEmptyHeadings verifies that a section ref on a document with no headings produces E053.
 func TestResolveReference_SectionEmptyHeadings(t *testing.T) {
 	doc := &ast.Document{
 		Path:     "test.md",
@@ -363,7 +365,7 @@ func TestResolveReference_SectionEmptyHeadings(t *testing.T) {
 	}
 }
 
-// Path-based document with exact .md match
+// TestResolveReference_PathBasedExactMdMatch verifies that a path reference with explicit .md extension resolves directly.
 func TestResolveReference_PathBasedExactMdMatch(t *testing.T) {
 	targetDoc := makeDoc("", "docs/api.md")
 	ws := makeWorkspace(targetDoc)
@@ -380,7 +382,7 @@ func TestResolveReference_PathBasedExactMdMatch(t *testing.T) {
 	}
 }
 
-// Variable with object value but requested property doesn't exist
+// TestResolveReference_LocalObjectPropertyMissing verifies that a missing property on a local object falls through to workspace lookup.
 func TestResolveReference_LocalObjectPropertyMissing(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"settings": {
@@ -408,7 +410,7 @@ func TestResolveReference_LocalObjectPropertyMissing(t *testing.T) {
 	}
 }
 
-// Long cycle: a→b→c→d→e→a
+// TestDetectCycles_LongCycle verifies that a five-node cycle (a->b->c->d->e->a) is detected.
 func TestDetectCycles_LongCycle(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
@@ -426,7 +428,7 @@ func TestDetectCycles_LongCycle(t *testing.T) {
 	}
 }
 
-// Single node, no edges
+// TestDetectCycles_SingleNodeNoEdges verifies that a single node with an empty edge list produces no cycle.
 func TestDetectCycles_SingleNodeNoEdges(t *testing.T) {
 	g := DependencyGraph{
 		Edges: map[string][]string{
