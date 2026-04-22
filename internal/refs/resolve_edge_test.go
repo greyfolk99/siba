@@ -8,7 +8,6 @@ import (
 
 	"github.com/hjseo/siba/internal/ast"
 	"github.com/hjseo/siba/internal/scope"
-	"github.com/hjseo/siba/internal/workspace"
 )
 
 // --- Edge case tests from Codex review ---
@@ -27,26 +26,6 @@ func TestResolveReference_LocalVariableNilValue(t *testing.T) {
 	}
 	if diag.Code != "E050" {
 		t.Fatalf("expected E050, got %s", diag.Code)
-	}
-}
-
-// TestResolveReference_DocVariableNilValue verifies that a public doc variable with nil Value produces E054.
-func TestResolveReference_DocVariableNilValue(t *testing.T) {
-	targetVars := []ast.Variable{
-		{Name: "port", Access: ast.AccessPublic, Value: nil},
-	}
-	targetDoc := makeDocWithVars("config", "config.md", targetVars)
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.port", "config", "", "port", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, ws)
-	if diag == nil {
-		t.Fatal("expected diagnostic for nil value")
-	}
-	if diag.Code != "E054" {
-		t.Fatalf("expected E054, got %s", diag.Code)
 	}
 }
 
@@ -185,7 +164,7 @@ func TestDetectCycles_MultiEdgeWithCycle(t *testing.T) {
 	}
 }
 
-// TestResolveReference_CrossDocSectionBySlug verifies that a cross-document section reference resolves by heading slug.
+// TestResolveReference_CrossDocSectionBySlug verifies that an alias#section reference resolves by heading slug via import.
 func TestResolveReference_CrossDocSectionBySlug(t *testing.T) {
 	targetHeadings := []*ast.Heading{
 		{Level: 1, Text: "Getting Started", Slug: "getting-started"},
@@ -194,7 +173,13 @@ func TestResolveReference_CrossDocSectionBySlug(t *testing.T) {
 	ws := makeWorkspace(targetDoc)
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("guide#getting-started", "guide", "getting-started", "", 1)
-	doc := makeDoc("main", "main.md")
+	doc := &ast.Document{
+		Name: "main",
+		Path: "main.md",
+		Imports: []ast.Import{
+			{Alias: "guide", Path: "guide.md"},
+		},
+	}
 
 	result, diag := ResolveReference(ref, doc, s, ws)
 	if diag != nil {
@@ -205,7 +190,7 @@ func TestResolveReference_CrossDocSectionBySlug(t *testing.T) {
 	}
 }
 
-// TestResolveReference_CrossDocSectionNotFound verifies that a cross-doc section ref to a missing heading produces E053.
+// TestResolveReference_CrossDocSectionNotFound verifies that an alias#section ref to a missing heading produces E053.
 func TestResolveReference_CrossDocSectionNotFound(t *testing.T) {
 	targetHeadings := []*ast.Heading{
 		{Level: 1, Text: "Intro", Slug: "intro"},
@@ -214,7 +199,13 @@ func TestResolveReference_CrossDocSectionNotFound(t *testing.T) {
 	ws := makeWorkspace(targetDoc)
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("guide#missing", "guide", "missing", "", 1)
-	doc := makeDoc("main", "main.md")
+	doc := &ast.Document{
+		Name: "main",
+		Path: "main.md",
+		Imports: []ast.Import{
+			{Alias: "guide", Path: "guide.md"},
+		},
+	}
 
 	_, diag := ResolveReference(ref, doc, s, ws)
 	if diag == nil {
@@ -288,33 +279,6 @@ func TestBuildDependencyGraph_RefToNonexistentDoc(t *testing.T) {
 	}
 }
 
-// TestResolveReference_CrossDocVarByPath verifies that a cross-doc variable reference resolves via file path lookup.
-func TestResolveReference_CrossDocVarByPath(t *testing.T) {
-	targetVars := []ast.Variable{
-		{Name: "host", Access: ast.AccessPublic, Value: strVal("example.com")},
-	}
-	targetDoc := &ast.Document{
-		Name:      "",
-		Path:      "config.md",
-		Variables: targetVars,
-	}
-	ws := &workspace.Workspace{
-		Documents:  make(map[string]*ast.Document),
-		DocsByPath: map[string]*ast.Document{"config.md": targetDoc},
-		Templates:  make(map[string]*ast.Document),
-	}
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.md.host", "config.md", "", "host", 1)
-	doc := makeDoc("main", "main.md")
-
-	result, diag := ResolveReference(ref, doc, s, ws)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
-	}
-	if result.Value != "example.com" {
-		t.Fatalf("expected 'example.com', got %q", result.Value)
-	}
-}
 
 // TestResolveReference_ScopeLineResolution verifies that variable visibility is determined by scope line ranges.
 func TestResolveReference_ScopeLineResolution(t *testing.T) {
@@ -365,24 +329,7 @@ func TestResolveReference_SectionEmptyHeadings(t *testing.T) {
 	}
 }
 
-// TestResolveReference_PathBasedExactMdMatch verifies that a path reference with explicit .md extension resolves directly.
-func TestResolveReference_PathBasedExactMdMatch(t *testing.T) {
-	targetDoc := makeDoc("", "docs/api.md")
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("docs/api.md", "docs/api.md", "", "", 1)
-	doc := makeDoc("main", "main.md")
-
-	result, diag := ResolveReference(ref, doc, s, ws)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
-	}
-	if result.Kind != ResolvedDocument {
-		t.Fatalf("expected ResolvedDocument, got %v", result.Kind)
-	}
-}
-
-// TestResolveReference_LocalObjectPropertyMissing verifies that a missing property on a local object falls through to workspace lookup.
+// TestResolveReference_LocalObjectPropertyMissing verifies that a missing property on a local object produces E050 (unresolved property).
 func TestResolveReference_LocalObjectPropertyMissing(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{
 		"settings": {
@@ -396,7 +343,7 @@ func TestResolveReference_LocalObjectPropertyMissing(t *testing.T) {
 		},
 	})
 	// "settings" exists as local object, but "missing" property doesn't exist
-	// should fall through to workspace lookup
+	// now returns E050 (unresolved property) — no cross-doc fallthrough
 	ref := makeRef("settings.missing", "settings", "", "missing", 1)
 	doc := makeDoc("main", "main.md")
 
@@ -404,9 +351,8 @@ func TestResolveReference_LocalObjectPropertyMissing(t *testing.T) {
 	if diag == nil {
 		t.Fatal("expected diagnostic")
 	}
-	// falls through local check, then ws==nil → E051
-	if diag.Code != "E051" {
-		t.Fatalf("expected E051, got %s", diag.Code)
+	if diag.Code != "E050" {
+		t.Fatalf("expected E050, got %s", diag.Code)
 	}
 }
 

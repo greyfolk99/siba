@@ -272,7 +272,7 @@ func TestResolveReference_SectionInNestedHeading(t *testing.T) {
 	}
 }
 
-// TestResolveReference_CrossDocSection verifies that a doc#section reference resolves a heading in another document.
+// TestResolveReference_CrossDocSection verifies that an alias#section reference resolves a heading in an imported document.
 func TestResolveReference_CrossDocSection(t *testing.T) {
 	targetHeadings := []*ast.Heading{
 		{Level: 1, Text: "API", Slug: "api"},
@@ -281,7 +281,13 @@ func TestResolveReference_CrossDocSection(t *testing.T) {
 	ws := makeWorkspace(targetDoc)
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("config#api", "config", "api", "", 1)
-	doc := makeDoc("main", "main.md")
+	doc := &ast.Document{
+		Name: "main",
+		Path: "main.md",
+		Imports: []ast.Import{
+			{Alias: "config", Path: "config.md"},
+		},
+	}
 
 	result, diag := ResolveReference(ref, doc, s, ws)
 	if diag != nil {
@@ -292,29 +298,19 @@ func TestResolveReference_CrossDocSection(t *testing.T) {
 	}
 }
 
-// TestResolveReference_CrossDocSectionNoWorkspace verifies that a cross-doc section ref without a workspace produces E051.
+// TestResolveReference_CrossDocSectionNoWorkspace verifies that an alias#section ref without a workspace produces E052 (imported file not found).
 func TestResolveReference_CrossDocSectionNoWorkspace(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{})
 	ref := makeRef("config#api", "config", "api", "", 1)
-	doc := makeDoc("main", "main.md")
+	doc := &ast.Document{
+		Name: "main",
+		Path: "main.md",
+		Imports: []ast.Import{
+			{Alias: "config", Path: "config.md"},
+		},
+	}
 
 	_, diag := ResolveReference(ref, doc, s, nil)
-	if diag == nil {
-		t.Fatal("expected diagnostic")
-	}
-	if diag.Code != "E051" {
-		t.Fatalf("expected E051, got %s", diag.Code)
-	}
-}
-
-// TestResolveReference_CrossDocSectionDocNotFound verifies that a cross-doc section ref to a missing document produces E052.
-func TestResolveReference_CrossDocSectionDocNotFound(t *testing.T) {
-	ws := makeWorkspace()
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("missing#section", "missing", "section", "", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, ws)
 	if diag == nil {
 		t.Fatal("expected diagnostic")
 	}
@@ -323,80 +319,25 @@ func TestResolveReference_CrossDocSectionDocNotFound(t *testing.T) {
 	}
 }
 
-// --- ResolveReference: document variable reference ---
-
-// TestResolveReference_DocVariable verifies that a doc.var reference resolves a public variable from another document.
-func TestResolveReference_DocVariable(t *testing.T) {
-	targetVars := []ast.Variable{
-		{Name: "port", Access: ast.AccessPublic, Value: numVal(8080)},
-	}
-	targetDoc := makeDocWithVars("config", "config.md", targetVars)
-	ws := makeWorkspace(targetDoc)
+// TestResolveReference_CrossDocSectionDocNotFound verifies that an alias#section ref to a missing import produces E052.
+func TestResolveReference_CrossDocSectionDocNotFound(t *testing.T) {
+	ws := makeWorkspace()
 	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.port", "config", "", "port", 1)
-	doc := makeDoc("main", "main.md")
-
-	result, diag := ResolveReference(ref, doc, s, ws)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
+	ref := makeRef("missing#section", "missing", "section", "", 1)
+	doc := &ast.Document{
+		Name: "main",
+		Path: "main.md",
+		Imports: []ast.Import{
+			{Alias: "missing", Path: "missing.md"},
+		},
 	}
-	if result.Kind != ResolvedVariable {
-		t.Fatalf("expected ResolvedVariable, got %v", result.Kind)
-	}
-	if result.Value != "8080" {
-		t.Fatalf("expected '8080', got %q", result.Value)
-	}
-}
-
-// TestResolveReference_DocVariablePrivate verifies that accessing a private variable from another document produces E054.
-func TestResolveReference_DocVariablePrivate(t *testing.T) {
-	targetVars := []ast.Variable{
-		{Name: "secret", Access: ast.AccessPrivate, Value: strVal("hidden")},
-	}
-	targetDoc := makeDocWithVars("config", "config.md", targetVars)
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.secret", "config", "", "secret", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, ws)
-	if diag == nil {
-		t.Fatal("expected diagnostic for private variable")
-	}
-	if diag.Code != "E054" {
-		t.Fatalf("expected E054, got %s", diag.Code)
-	}
-}
-
-// TestResolveReference_DocVariableNotFound verifies that referencing a nonexistent variable on a document produces E054.
-func TestResolveReference_DocVariableNotFound(t *testing.T) {
-	targetDoc := makeDocWithVars("config", "config.md", []ast.Variable{})
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.missing", "config", "", "missing", 1)
-	doc := makeDoc("main", "main.md")
 
 	_, diag := ResolveReference(ref, doc, s, ws)
 	if diag == nil {
 		t.Fatal("expected diagnostic")
 	}
-	if diag.Code != "E054" {
-		t.Fatalf("expected E054, got %s", diag.Code)
-	}
-}
-
-// TestResolveReference_DocVariableNoWorkspace verifies that a doc.var reference without a workspace produces E051.
-func TestResolveReference_DocVariableNoWorkspace(t *testing.T) {
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.port", "config", "", "port", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, nil)
-	if diag == nil {
-		t.Fatal("expected diagnostic")
-	}
-	if diag.Code != "E051" {
-		t.Fatalf("expected E051, got %s", diag.Code)
+	if diag.Code != "E052" {
+		t.Fatalf("expected E052, got %s", diag.Code)
 	}
 }
 
@@ -428,74 +369,6 @@ func TestResolveReference_LocalObjectPropertyAccess(t *testing.T) {
 	}
 	if result.Value != "3000" {
 		t.Fatalf("expected '3000', got %q", result.Value)
-	}
-}
-
-// --- ResolveReference: path-based reference ---
-
-// TestResolveReference_PathBasedDocument verifies that a path-based reference (containing /) resolves to a document by path.
-func TestResolveReference_PathBasedDocument(t *testing.T) {
-	targetDoc := makeDoc("", "docs/api/config.md")
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("docs/api/config", "docs/api/config", "", "", 1)
-	doc := makeDoc("main", "main.md")
-
-	result, diag := ResolveReference(ref, doc, s, ws)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
-	}
-	if result.Kind != ResolvedDocument {
-		t.Fatalf("expected ResolvedDocument, got %v", result.Kind)
-	}
-}
-
-// TestResolveReference_PathBasedWithExtension verifies that a path reference without .md extension auto-appends .md for lookup.
-func TestResolveReference_PathBasedWithExtension(t *testing.T) {
-	targetDoc := makeDoc("", "docs/api.md")
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	// reference without .md, should try adding .md extension
-	ref := makeRef("docs/api", "docs/api", "", "", 1)
-	doc := makeDoc("main", "main.md")
-
-	result, diag := ResolveReference(ref, doc, s, ws)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
-	}
-	if result.Kind != ResolvedDocument {
-		t.Fatalf("expected ResolvedDocument, got %v", result.Kind)
-	}
-}
-
-// TestResolveReference_PathBasedNotFound verifies that a path-based reference to a missing document produces E055.
-func TestResolveReference_PathBasedNotFound(t *testing.T) {
-	ws := makeWorkspace()
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("docs/missing", "docs/missing", "", "", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, ws)
-	if diag == nil {
-		t.Fatal("expected diagnostic")
-	}
-	if diag.Code != "E055" {
-		t.Fatalf("expected E055, got %s", diag.Code)
-	}
-}
-
-// TestResolveReference_PathBasedNoWorkspace verifies that a path-based reference without a workspace produces E051.
-func TestResolveReference_PathBasedNoWorkspace(t *testing.T) {
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("docs/api", "docs/api", "", "", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, nil)
-	if diag == nil {
-		t.Fatal("expected diagnostic")
-	}
-	if diag.Code != "E051" {
-		t.Fatalf("expected E051, got %s", diag.Code)
 	}
 }
 
@@ -919,43 +792,3 @@ func TestResolveReference_UnresolvedRawFallback(t *testing.T) {
 	}
 }
 
-// TestResolveReference_DocVariableProtectedAccess verifies that accessing a protected variable from another document produces E054.
-func TestResolveReference_DocVariableProtectedAccess(t *testing.T) {
-	targetVars := []ast.Variable{
-		{Name: "internal", Access: ast.AccessProtected, Value: strVal("hidden")},
-	}
-	targetDoc := makeDocWithVars("config", "config.md", targetVars)
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.internal", "config", "", "internal", 1)
-	doc := makeDoc("main", "main.md")
-
-	_, diag := ResolveReference(ref, doc, s, ws)
-	if diag == nil {
-		t.Fatal("expected diagnostic for protected variable")
-	}
-	if diag.Code != "E054" {
-		t.Fatalf("expected E054, got %s", diag.Code)
-	}
-}
-
-// TestResolveReference_MultiplePublicVarsFirstMatch verifies that the correct variable is resolved among multiple public vars.
-func TestResolveReference_MultiplePublicVarsFirstMatch(t *testing.T) {
-	targetVars := []ast.Variable{
-		{Name: "port", Access: ast.AccessPublic, Value: numVal(8080)},
-		{Name: "host", Access: ast.AccessPublic, Value: strVal("localhost")},
-	}
-	targetDoc := makeDocWithVars("config", "config.md", targetVars)
-	ws := makeWorkspace(targetDoc)
-	s := makeScope(map[string]ast.Variable{})
-	ref := makeRef("config.host", "config", "", "host", 1)
-	doc := makeDoc("main", "main.md")
-
-	result, diag := ResolveReference(ref, doc, s, ws)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
-	}
-	if result.Value != "localhost" {
-		t.Fatalf("expected 'localhost', got %q", result.Value)
-	}
-}
