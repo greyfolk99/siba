@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -795,13 +796,40 @@ func findHeading(headings []*ast.Heading, symbol string) *ast.Heading {
 }
 
 func runCat(fileArg string, rawMode bool) {
+	if rawMode {
+		doc, symbol := loadAndParse(fileArg)
+		output := renderOrRaw(doc, symbol, true)
+		fmt.Print(output)
+		return
+	}
+
 	doc, symbol := loadAndParse(fileArg)
-	output := renderOrRaw(doc, symbol, rawMode)
-	fmt.Print(output)
+	if symbol != "" {
+		// symbol routing — render then extract section
+		output := renderOrRaw(doc, symbol, false)
+		fmt.Print(output)
+		return
+	}
+
+	// streaming render to stdout
+	cwd, _ := os.Getwd()
+	ws, _ := workspace.LoadWorkspace(cwd)
+	if err := render.StreamRender(doc, os.Stdout, ws); err != nil {
+		fmt.Fprintf(os.Stderr, "render error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func runHead(fileArg string, n int, rawMode bool) {
 	doc, symbol := loadAndParse(fileArg)
+	if !rawMode && symbol == "" {
+		// streaming with line limit
+		cwd, _ := os.Getwd()
+		ws, _ := workspace.LoadWorkspace(cwd)
+		lw := &lineWriter{w: os.Stdout, limit: n}
+		render.StreamRender(doc, lw, ws)
+		return
+	}
 	output := renderOrRaw(doc, symbol, rawMode)
 	lines := strings.Split(output, "\n")
 	if len(lines) > n {
@@ -814,7 +842,6 @@ func runTail(fileArg string, n int, rawMode bool) {
 	doc, symbol := loadAndParse(fileArg)
 	output := renderOrRaw(doc, symbol, rawMode)
 	lines := strings.Split(output, "\n")
-	// remove trailing empty line from split
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
@@ -822,6 +849,29 @@ func runTail(fileArg string, n int, rawMode bool) {
 		lines = lines[len(lines)-n:]
 	}
 	fmt.Println(strings.Join(lines, "\n"))
+}
+
+// lineWriter wraps an io.Writer and stops after N lines
+type lineWriter struct {
+	w     io.Writer
+	limit int
+	count int
+}
+
+func (lw *lineWriter) Write(p []byte) (int, error) {
+	if lw.count >= lw.limit {
+		return len(p), nil // discard
+	}
+	for _, b := range p {
+		if b == '\n' {
+			lw.count++
+			if lw.count >= lw.limit {
+				lw.w.Write([]byte{'\n'})
+				return len(p), nil
+			}
+		}
+	}
+	return lw.w.Write(p)
 }
 
 // --- Search commands ---
