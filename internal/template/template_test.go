@@ -141,13 +141,17 @@ func TestValidateContract_AllRequiredPresent(t *testing.T) {
 // TestValidateContract_RequiredMissing verifies that a missing @required heading produces an E070 diagnostic.
 func TestValidateContract_RequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
-		h(1, "Summary", "summary", "", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Introduction", "introduction", "", ast.AnnotationRequired),
+			h(2, "Summary", "summary", "", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{
 		Headings: []*ast.Heading{
-			h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
-			// Summary missing
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired,
+				h(2, "Introduction", "introduction", "", ast.AnnotationRequired),
+				// Summary missing
+			),
 		},
 	}
 
@@ -182,11 +186,15 @@ func TestValidateContract_DefaultHeadingOptional(t *testing.T) {
 // TestValidateContract_LevelMismatch verifies that a heading with the wrong level produces an E072 diagnostic.
 func TestValidateContract_LevelMismatch(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Introduction", "introduction", "", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Introduction", "introduction", "", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{
 		Headings: []*ast.Heading{
-			h(2, "Introduction", "introduction", "", ast.AnnotationRequired), // wrong level
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired,
+				h(3, "Introduction", "introduction", "", ast.AnnotationRequired), // wrong level
+			),
 		},
 	}
 
@@ -260,7 +268,9 @@ func TestValidateContract_EmptyTemplate(t *testing.T) {
 // TestValidateContract_EmptyChild verifies that a child with no headings fails when the template has required ones.
 func TestValidateContract_EmptyChild(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Required", "required", "", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Required", "required", "", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{Headings: nil}
 

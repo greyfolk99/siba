@@ -37,10 +37,32 @@ func ResolveTemplate(doc *ast.Document, ws *workspace.Workspace) (*ast.Document,
 // It checks:
 // - Required headings (non-@default) must exist in child
 // - Heading levels must match template structure
+// - H1 root headings are skipped (document titles differ naturally)
+//   but their children are still validated
 func ValidateContract(child, tmpl *ast.Document) []ast.Diagnostic {
 	var diags []ast.Diagnostic
 
 	for _, th := range tmpl.Headings {
+		if th.Level == 1 {
+			// Skip H1 title match — each doc has its own title.
+			// But still validate H1's children against child's root-level H2+ headings.
+			// Find matching H1 in child (any H1 matches since it's the title)
+			var childH1 *ast.Heading
+			for _, ch := range child.Headings {
+				if ch.Level == 1 {
+					childH1 = ch
+					break
+				}
+			}
+			childChildren := child.Headings
+			if childH1 != nil {
+				childChildren = childH1.Children
+			}
+			for _, tmplChild := range th.Children {
+				validateHeading(tmplChild, childChildren, &diags)
+			}
+			continue
+		}
 		validateHeading(th, child.Headings, &diags)
 	}
 

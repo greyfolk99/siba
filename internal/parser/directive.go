@@ -8,6 +8,7 @@ import (
 )
 
 var directiveRe = regexp.MustCompile(`<!--\s*@(\w+)\s*(.*?)\s*-->`)
+var multilineDirectiveRe = regexp.MustCompile(`(?s)<!--\s*@(\w+)\s*(.*?)\s*-->`)
 
 // ParseDirectives extracts all <!-- @... --> directives from source
 func ParseDirectives(source string) []ast.Directive {
@@ -29,7 +30,7 @@ func ParseDirectives(source string) []ast.Directive {
 						break
 					}
 				}
-				matches = directiveRe.FindStringSubmatch(full)
+				matches = multilineDirectiveRe.FindStringSubmatch(full)
 				if matches != nil {
 					kind, args := parseDirectiveInner(matches[1], matches[2])
 					directives = append(directives, ast.Directive{

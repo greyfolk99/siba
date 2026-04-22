@@ -63,9 +63,11 @@ func TestMergeHeadings_RequiredMissing(t *testing.T) {
 // TestValidateContract_MultipleRequiredMissing verifies that each missing @required heading produces its own diagnostic.
 func TestValidateContract_MultipleRequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Section A", "section-a", "", ast.AnnotationRequired),
-		h(1, "Section B", "section-b", "", ast.AnnotationRequired),
-		h(1, "Section C", "section-c", "", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Section A", "section-a", "", ast.AnnotationRequired),
+			h(2, "Section B", "section-b", "", ast.AnnotationRequired),
+			h(2, "Section C", "section-c", "", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{Headings: nil}
 
@@ -78,8 +80,11 @@ func TestValidateContract_MultipleRequiredMissing(t *testing.T) {
 // TestValidateContract_DiagnosticHasPosition verifies that the diagnostic for a missing heading carries the template position.
 func TestValidateContract_DiagnosticHasPosition(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		{Level: 1, Text: "Required", Slug: "required", Annotation: ast.AnnotationRequired,
-			Position: ast.Position{Line: 5, Column: 1}},
+		{Level: 1, Text: "Template", Slug: "template", Annotation: ast.AnnotationRequired,
+			Children: []*ast.Heading{
+				{Level: 2, Text: "Required", Slug: "required", Annotation: ast.AnnotationRequired,
+					Position: ast.Position{Line: 5, Column: 1}},
+			}},
 	})
 	child := &ast.Document{Headings: nil}
 
@@ -95,12 +100,16 @@ func TestValidateContract_DiagnosticHasPosition(t *testing.T) {
 // TestValidateContract_LevelMismatchDiagPosition verifies that a level-mismatch diagnostic points to the child heading position.
 func TestValidateContract_LevelMismatchDiagPosition(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Intro", "intro", "", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Intro", "intro", "", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{
 		Headings: []*ast.Heading{
-			{Level: 2, Text: "Intro", Slug: "intro", Annotation: ast.AnnotationRequired,
-				Position: ast.Position{Line: 10, Column: 1}},
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired,
+				&ast.Heading{Level: 3, Text: "Intro", Slug: "intro", Annotation: ast.AnnotationRequired,
+					Position: ast.Position{Line: 10, Column: 1}},
+			),
 		},
 	}
 
@@ -235,11 +244,15 @@ func TestMergeHeadings_OrderPreserved(t *testing.T) {
 // TestValidateContract_LevelMismatchUsesChildText verifies that a level-mismatch E072 diagnostic references the child heading.
 func TestValidateContract_LevelMismatchUsesChildText(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Template Title", "template-title", "ch1", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Template Title", "template-title", "ch1", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{
 		Headings: []*ast.Heading{
-			h(2, "Child Title", "child-title", "ch1", ast.AnnotationRequired),
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired,
+				h(3, "Child Title", "child-title", "ch1", ast.AnnotationRequired),
+			),
 		},
 	}
 

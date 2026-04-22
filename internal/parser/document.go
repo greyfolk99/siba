@@ -128,6 +128,8 @@ func extractVariables(directives []ast.Directive) []ast.Variable {
 		}
 
 		args := strings.TrimSpace(d.Args)
+		// Normalize multiline args (newlines → spaces)
+		args = strings.Join(strings.Fields(args), " ")
 
 		// Try full declaration: [access] name [: type] = value
 		matches := varDeclRe.FindStringSubmatch(args)

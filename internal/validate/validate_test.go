@@ -136,7 +136,10 @@ func TestValidateDocument_TemplateValidation(t *testing.T) {
 		Path:       "base.md",
 		IsTemplate: true,
 		Headings: []*ast.Heading{
-			{Level: 1, Text: "Required", Slug: "required", Annotation: ast.AnnotationRequired},
+			{Level: 1, Text: "Template", Slug: "template", Annotation: ast.AnnotationRequired,
+				Children: []*ast.Heading{
+					{Level: 2, Text: "Required", Slug: "required", Annotation: ast.AnnotationRequired},
+				}},
 		},
 	}
 	child := &ast.Document{
