@@ -1,5 +1,4 @@
-siba
-siba-lsp
+/siba
 *.exe
-_build/
+_render/
 .siba/
