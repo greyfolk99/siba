@@ -47,6 +47,7 @@ const (
 	DirectiveDefault
 	DirectiveConst
 	DirectiveLet
+	DirectiveImport
 	DirectiveIf
 	DirectiveEndif
 	DirectiveFor
@@ -162,12 +163,20 @@ type ControlBlock struct {
 	End       Position
 }
 
+// Import represents an @import directive
+type Import struct {
+	Alias    string   // short name
+	Path     string   // file path or package URL
+	Position Position
+}
+
 // Document represents a fully parsed document
 type Document struct {
 	Path          string
-	Name          string // from @doc
-	ExtendsName   string // from @extends
+	Name          string // from @doc or @template
+	ExtendsName   string // from @extends (can include #symbol)
 	IsTemplate    bool   // has @template
+	Imports       []Import
 	Headings      []*Heading
 	Directives    []Directive
 	Variables     []Variable

@@ -28,6 +28,7 @@ func ParseDocument(path string, source string) *ast.Document {
 	// Extract document metadata
 	doc.Name, doc.IsTemplate = extractDocMeta(doc.Directives)
 	doc.ExtendsName = extractExtends(doc.Directives)
+	doc.Imports = extractImports(doc.Directives)
 
 	// Validate @doc + @template exclusivity
 	if diag := validateDocTemplateExclusive(doc.Directives); diag != nil {
@@ -91,6 +92,28 @@ func extractExtends(directives []ast.Directive) string {
 		}
 	}
 	return ""
+}
+
+// extractImports parses @import directives: <!-- @import alias from path -->
+var importRe = regexp.MustCompile(`^(\w[\w-]*)\s+from\s+(.+)$`)
+
+func extractImports(directives []ast.Directive) []ast.Import {
+	var imports []ast.Import
+	for _, d := range directives {
+		if d.Kind != ast.DirectiveImport {
+			continue
+		}
+		matches := importRe.FindStringSubmatch(strings.TrimSpace(d.Args))
+		if matches == nil {
+			continue
+		}
+		imports = append(imports, ast.Import{
+			Alias:    matches[1],
+			Path:     strings.TrimSpace(matches[2]),
+			Position: d.Position,
+		})
+	}
+	return imports
 }
 
 func validateDocTemplateExclusive(directives []ast.Directive) *ast.Diagnostic {
@@ -232,38 +255,27 @@ func extractReferences(source string) []ast.Reference {
 func parseReferenceInner(inner string) ast.Reference {
 	ref := ast.Reference{}
 
-	// Check for . (variable access) - find last dot not inside path
-	dotIdx := -1
 	hashIdx := strings.Index(inner, "#")
 
 	if hashIdx >= 0 {
-		// has section part
-		ref.PathPart = inner[:hashIdx]
+		// Has # — symbol reference
+		// Before #: alias or empty (current file)
+		// After #: symbol path (may contain / for nesting)
+		ref.PathPart = inner[:hashIdx] // alias (empty = current file)
 		rest := inner[hashIdx+1:]
-		dotIdx = strings.LastIndex(rest, ".")
-		if dotIdx >= 0 {
-			ref.Section = rest[:dotIdx]
-			ref.Variable = rest[dotIdx+1:]
-		} else {
-			ref.Section = rest
-		}
+
+		// Check for . after # — only for local property access, not cross-doc
+		// Since cross-doc variable access is forbidden, . after # is not allowed
+		ref.Section = rest
 	} else {
-		dotIdx = strings.LastIndex(inner, ".")
-		if dotIdx >= 0 && !strings.Contains(inner, "/") {
-			// doc.variable
+		// No # — local variable or simple name
+		dotIdx := strings.LastIndex(inner, ".")
+		if dotIdx >= 0 {
+			// obj.prop — local object property access
 			ref.PathPart = inner[:dotIdx]
 			ref.Variable = inner[dotIdx+1:]
-		} else if strings.Contains(inner, "/") {
-			// path reference
-			dotIdx = strings.LastIndex(inner, ".")
-			if dotIdx > strings.LastIndex(inner, "/") {
-				ref.PathPart = inner[:dotIdx]
-				ref.Variable = inner[dotIdx+1:]
-			} else {
-				ref.PathPart = inner
-			}
 		} else {
-			// simple name - could be variable or doc name
+			// simple name — variable or symbol
 			ref.PathPart = inner
 		}
 	}

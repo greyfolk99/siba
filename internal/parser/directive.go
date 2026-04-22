@@ -69,6 +69,8 @@ func parseDirectiveInner(keyword, args string) (ast.DirectiveKind, string) {
 		return ast.DirectiveName, args
 	case "default":
 		return ast.DirectiveDefault, args
+	case "import":
+		return ast.DirectiveImport, args
 	case "const":
 		return ast.DirectiveConst, args
 	case "let":
