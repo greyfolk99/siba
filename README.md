@@ -200,7 +200,7 @@ internal/
 ## Related Projects
 
 - [siba-lsp](https://github.com/greyfolk99/siba-lsp) — LSP server
-- [siba-preview](https://github.com/greyfolk99/siba-preview) — VSCode extension
+- [siba-viewer](https://github.com/greyfolk99/siba-viewer) — VSCode extension
 
 ## License
 
