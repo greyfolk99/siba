@@ -74,9 +74,8 @@ const (
 type AccessLevel int
 
 const (
-	AccessPublic AccessLevel = iota
-	AccessPrivate
-	AccessProtected
+	AccessDefault AccessLevel = iota // visible to extends children + same file
+	AccessPrivate                    // not visible to extends children
 )
 
 // Mutability for variables

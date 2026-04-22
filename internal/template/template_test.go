@@ -300,7 +300,7 @@ func TestValidateContract_AllDefault(t *testing.T) {
 func TestInheritVariables_PublicInherited(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
-			{Name: "version", Access: ast.AccessPublic, Value: strVal("1.0")},
+			{Name: "version", Access: ast.AccessDefault, Value: strVal("1.0")},
 		},
 	}
 	child := &ast.Document{Variables: nil}
@@ -333,7 +333,7 @@ func TestInheritVariables_PrivateExcluded(t *testing.T) {
 func TestInheritVariables_ProtectedInherited(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
-			{Name: "internal", Access: ast.AccessProtected, Value: strVal("protected")},
+			{Name: "internal", Access: ast.AccessDefault, Value: strVal("protected")},
 		},
 	}
 	child := &ast.Document{Variables: nil}
@@ -348,7 +348,7 @@ func TestInheritVariables_ProtectedInherited(t *testing.T) {
 func TestInheritVariables_ChildOverrides(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
-			{Name: "version", Access: ast.AccessPublic, Value: strVal("1.0")},
+			{Name: "version", Access: ast.AccessDefault, Value: strVal("1.0")},
 		},
 	}
 	child := &ast.Document{
@@ -370,9 +370,9 @@ func TestInheritVariables_ChildOverrides(t *testing.T) {
 func TestInheritVariables_MixedAccess(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
-			{Name: "pub", Access: ast.AccessPublic, Value: strVal("public")},
+			{Name: "pub", Access: ast.AccessDefault, Value: strVal("public")},
 			{Name: "priv", Access: ast.AccessPrivate, Value: strVal("private")},
-			{Name: "prot", Access: ast.AccessProtected, Value: strVal("protected")},
+			{Name: "prot", Access: ast.AccessDefault, Value: strVal("protected")},
 		},
 	}
 	child := &ast.Document{Variables: nil}
@@ -397,7 +397,7 @@ func TestInheritVariables_MixedAccess(t *testing.T) {
 func TestInheritVariables_ChildFirst(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
-			{Name: "base_var", Access: ast.AccessPublic, Value: strVal("from_template")},
+			{Name: "base_var", Access: ast.AccessDefault, Value: strVal("from_template")},
 		},
 	}
 	child := &ast.Document{

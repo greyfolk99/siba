@@ -211,10 +211,8 @@ func parseAccessLevel(s string) ast.AccessLevel {
 	switch s {
 	case "private":
 		return ast.AccessPrivate
-	case "protected":
-		return ast.AccessProtected
 	default:
-		return ast.AccessPublic
+		return ast.AccessDefault
 	}
 }
 

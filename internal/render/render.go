@@ -222,7 +222,7 @@ func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Docume
 				if ws != nil {
 					if targetDoc := ws.GetDocument(objName); targetDoc != nil {
 						for _, tv := range targetDoc.Variables {
-							if tv.Name == propName && tv.Access == ast.AccessPublic && tv.Value != nil {
+							if tv.Name == propName && tv.Access == ast.AccessDefault && tv.Value != nil {
 								value := ast.ValueToString(*tv.Value)
 								ctx.Cache(varKey, value)
 								return value

@@ -152,9 +152,9 @@ func TestMergeHeadings_ChildExtraNestedHeadings(t *testing.T) {
 func TestInheritVariables_MultipleOverrides(t *testing.T) {
 	tmpl := &ast.Document{
 		Variables: []ast.Variable{
-			{Name: "a", Access: ast.AccessPublic, Value: strVal("tmpl_a")},
-			{Name: "b", Access: ast.AccessPublic, Value: strVal("tmpl_b")},
-			{Name: "c", Access: ast.AccessPublic, Value: strVal("tmpl_c")},
+			{Name: "a", Access: ast.AccessDefault, Value: strVal("tmpl_a")},
+			{Name: "b", Access: ast.AccessDefault, Value: strVal("tmpl_b")},
+			{Name: "c", Access: ast.AccessDefault, Value: strVal("tmpl_c")},
 		},
 	}
 	child := &ast.Document{
