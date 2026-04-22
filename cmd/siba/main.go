@@ -78,6 +78,8 @@ func main() {
 			os.Exit(1)
 		}
 		runScript(os.Args[2])
+	case "graph":
+		runGraph(jsonMode)
 	case "version":
 		fmt.Println("siba v0.1.0")
 	default:
@@ -97,6 +99,7 @@ func printUsage() {
 	fmt.Println("  siba get <pkg> [version]        Add a dependency")
 	fmt.Println("  siba tidy                       Remove unused dependencies")
 	fmt.Println("  siba run <script>               Run a script from module.toml")
+	fmt.Println("  siba graph                      Show dependency/reference graph")
 	fmt.Println("  siba version                    Show version")
 	fmt.Println()
 	fmt.Println("Flags:")
@@ -170,6 +173,29 @@ func toJSONDiagnostic(d ast.Diagnostic) JSONDiagnostic {
 		Code:     d.Code,
 		Message:  d.Message,
 	}
+}
+
+// JSONGraphResult is the result of siba graph --json
+type JSONGraphResult struct {
+	Nodes []JSONGraphNode `json:"nodes"`
+	Edges []JSONGraphEdge `json:"edges"`
+}
+
+// JSONGraphNode represents a document in the graph
+type JSONGraphNode struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsTemplate bool   `json:"is_template"`
+	Variables  int    `json:"variables"`
+	Headings   int    `json:"headings"`
+}
+
+// JSONGraphEdge represents a relationship between documents
+type JSONGraphEdge struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Type   string `json:"type"` // "extends", "ref", "variable"
 }
 
 func writeJSON(v interface{}) {
@@ -600,4 +626,142 @@ func splitPath(s string) []string {
 		parts = append(parts, current)
 	}
 	return parts
+}
+
+func runGraph(jsonMode bool) {
+	cwd, _ := os.Getwd()
+	ws, err := workspace.LoadWorkspace(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build nodes
+	var nodes []JSONGraphNode
+	docIDs := make(map[string]string) // path → id
+
+	for path, doc := range ws.DocsByPath {
+		id := path
+		if doc.Name != "" {
+			id = doc.Name
+		}
+		docIDs[path] = id
+
+		nodes = append(nodes, JSONGraphNode{
+			ID:         id,
+			Name:       doc.Name,
+			Path:       path,
+			IsTemplate: doc.IsTemplate,
+			Variables:  len(doc.Variables),
+			Headings:   countHeadings(doc.Headings),
+		})
+	}
+
+	// Build edges
+	var edges []JSONGraphEdge
+
+	for path, doc := range ws.DocsByPath {
+		sourceID := docIDs[path]
+
+		// @extends → "extends" edge
+		if doc.ExtendsName != "" {
+			edges = append(edges, JSONGraphEdge{
+				Source: sourceID,
+				Target: doc.ExtendsName,
+				Type:   "extends",
+			})
+		}
+
+		// {{doc-name}} references
+		for _, ref := range doc.References {
+			if ref.IsEscaped {
+				continue
+			}
+
+			// document content insertion: {{doc-name}} or {{doc-name#section}}
+			if ref.PathPart != "" && ref.Variable == "" {
+				if targetDoc := ws.GetDocument(ref.PathPart); targetDoc != nil {
+					edgeType := "ref"
+					if ref.Section != "" {
+						edgeType = "section_ref"
+					}
+					edges = append(edges, JSONGraphEdge{
+						Source: sourceID,
+						Target: ref.PathPart,
+						Type:   edgeType,
+					})
+				}
+			}
+
+			// variable reference: {{doc-name.variable}}
+			if ref.PathPart != "" && ref.Variable != "" {
+				if targetDoc := ws.GetDocument(ref.PathPart); targetDoc != nil {
+					edges = append(edges, JSONGraphEdge{
+						Source: sourceID,
+						Target: ref.PathPart,
+						Type:   "variable_ref",
+					})
+				}
+			}
+		}
+	}
+
+	result := JSONGraphResult{
+		Nodes: nodes,
+		Edges: edges,
+	}
+
+	if jsonMode {
+		writeJSON(result)
+		return
+	}
+
+	// DOT output (default)
+	fmt.Println("digraph siba {")
+	fmt.Println("  rankdir=LR;")
+	fmt.Println("  node [shape=box, style=rounded, fontname=\"sans-serif\"];")
+	fmt.Println()
+
+	for _, n := range nodes {
+		shape := "box"
+		if n.IsTemplate {
+			shape = "diamond"
+		}
+		label := n.ID
+		if n.Name != "" && n.Name != n.Path {
+			label = n.Name
+		}
+		fmt.Printf("  %q [label=%q, shape=%s];\n", n.ID, label, shape)
+	}
+
+	fmt.Println()
+
+	for _, e := range edges {
+		style := "solid"
+		color := "black"
+		label := ""
+		switch e.Type {
+		case "extends":
+			style = "bold"
+			color = "blue"
+			label = "extends"
+		case "ref":
+			color = "gray40"
+		case "section_ref":
+			color = "gray60"
+			style = "dashed"
+			label = "#"
+		case "variable_ref":
+			color = "orange"
+			style = "dotted"
+			label = "."
+		}
+		attrs := fmt.Sprintf("style=%s, color=%s", style, color)
+		if label != "" {
+			attrs += fmt.Sprintf(", label=%q", label)
+		}
+		fmt.Printf("  %q -> %q [%s];\n", e.Source, e.Target, attrs)
+	}
+
+	fmt.Println("}")
 }
