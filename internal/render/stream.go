@@ -164,11 +164,11 @@ func (ip *interpreter) handleFor(args string) error {
 
 	iterations, _ := control.EvaluateFor(iterName, collName, currentScope)
 
-	// Collect block lines
+	// Collect block lines (between @for and @endfor, exclusive of both)
 	ip.pos++
 	blockStart := ip.pos
 	ip.skipUntilEnd("endfor")
-	blockEnd := ip.pos - 1 // line before @endfor
+	blockEnd := ip.pos // ip.pos points at @endfor line
 
 	blockLines := ip.lines[blockStart:blockEnd]
 
@@ -274,6 +274,38 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 		inner := match[2 : len(match)-2]
 		inner = strings.TrimSpace(inner)
 
+		// #symbol — current file section/symbol reference (content insertion)
+		if strings.HasPrefix(inner, "#") {
+			symbol := inner[1:]
+			if ip.doc != nil {
+				h := findHeadingInList(ip.doc.Headings, symbol)
+				if h != nil {
+					return extractHeadingContent(ip.doc.Source, h)
+				}
+			}
+			return match
+		}
+
+		// alias#symbol — imported file symbol reference
+		if hashIdx := strings.Index(inner, "#"); hashIdx > 0 {
+			alias := inner[:hashIdx]
+			symbol := inner[hashIdx+1:]
+			if ip.ws != nil && ip.doc != nil {
+				for _, imp := range ip.doc.Imports {
+					if imp.Alias == alias {
+						targetDoc := resolveImportForRender(imp.Path, ip.ws)
+						if targetDoc != nil {
+							h := findHeadingInList(targetDoc.Headings, symbol)
+							if h != nil {
+								return extractHeadingContent(targetDoc.Source, h)
+							}
+						}
+					}
+				}
+			}
+			return match
+		}
+
 		// local variable
 		if v, ok := currentScope.Resolve(inner); ok && v.Value != nil {
 			return ast.ValueToString(*v.Value)
@@ -352,6 +384,34 @@ func resolveImportForRender(importPath string, ws *workspace.Workspace) *ast.Doc
 
 var directiveCheckRe = refDirectiveRe
 
-func init() {
-	// compiled in render.go or here
+func findHeadingInList(headings []*ast.Heading, nameOrSlug string) *ast.Heading {
+	for _, h := range headings {
+		if h.Name == nameOrSlug || h.Slug == nameOrSlug {
+			return h
+		}
+		if found := findHeadingInList(h.Children, nameOrSlug); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func extractHeadingContent(source string, h *ast.Heading) string {
+	lines := strings.Split(source, "\n")
+	start := h.Position.Line - 1
+	end := h.Content.End.Line
+	if end <= 0 || end > len(lines) {
+		end = len(lines)
+	}
+	if start >= len(lines) {
+		return ""
+	}
+	// Strip directives from the section content
+	var result []string
+	for _, line := range lines[start:end] {
+		if !parser.IsDirectiveLine(line) {
+			result = append(result, line)
+		}
+	}
+	return strings.Join(result, "\n")
 }
