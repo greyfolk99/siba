@@ -1,4 +1,4 @@
 /siba
 *.exe
-_render/
+_export/
 .siba/

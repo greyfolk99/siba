@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hjseo/siba/internal/ast"
 	"github.com/hjseo/siba/internal/parser"
@@ -48,40 +49,116 @@ func main() {
 
 	jsonMode := hasFlag("--json")
 
+	rawMode := hasFlag("--raw")
+	args := argsWithout(2, "--json", "--raw")
+
 	switch os.Args[1] {
-	case "init":
-		runInit()
-	case "render":
-		runRender(jsonMode)
-	case "check":
-		args := argsWithout(2, "--json")
+	// Read commands (render + streaming)
+	case "cat":
 		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "usage: siba cat <file.md[#symbol]>")
+			os.Exit(1)
+		}
+		runCat(args[0], rawMode)
+	case "head":
+		n := 10
+		file := ""
+		for i, a := range args {
+			if a == "-n" && i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &n)
+			} else if !strings.HasPrefix(a, "-") {
+				file = a
+			}
+		}
+		if file == "" {
+			fmt.Fprintln(os.Stderr, "usage: siba head [-n N] <file.md[#symbol]>")
+			os.Exit(1)
+		}
+		runHead(file, n, rawMode)
+	case "tail":
+		n := 10
+		file := ""
+		for i, a := range args {
+			if a == "-n" && i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &n)
+			} else if !strings.HasPrefix(a, "-") {
+				file = a
+			}
+		}
+		if file == "" {
+			fmt.Fprintln(os.Stderr, "usage: siba tail [-n N] <file.md[#symbol]>")
+			os.Exit(1)
+		}
+		runTail(file, n, rawMode)
+
+	// Search commands (no render, index only)
+	case "ls":
+		if len(args) == 0 {
+			runLs("", jsonMode)
+		} else {
+			runLs(args[0], jsonMode)
+		}
+	case "tree":
+		depsMode := hasFlag("--deps")
+		dotMode := hasFlag("--dot")
+		treeArgs := argsWithout(2, "--json", "--deps", "--dot")
+		if depsMode {
+			runTreeDeps(jsonMode, dotMode)
+		} else if len(treeArgs) > 0 {
+			runTreeHeadings(treeArgs[0], jsonMode)
+		} else {
+			runTreeHeadings("", jsonMode)
+		}
+	case "find":
+		findArgs := argsWithout(2, "--json", "--heading", "--variable")
+		headingMode := hasFlag("--heading")
+		variableMode := hasFlag("--variable")
+		if len(findArgs) == 0 {
+			fmt.Fprintln(os.Stderr, "usage: siba find [--heading|--variable] <query>")
+			os.Exit(1)
+		}
+		runFind(findArgs[0], headingMode, variableMode, jsonMode)
+
+	// Build commands
+	case "export":
+		runExport(jsonMode)
+	case "check":
+		checkArgs := argsWithout(2, "--json")
+		if len(checkArgs) == 0 {
 			runCheckWorkspace(jsonMode)
 		} else {
-			runCheck(args[0], jsonMode)
+			runCheck(checkArgs[0], jsonMode)
 		}
+
+	// Management
+	case "init":
+		runInit()
 	case "get":
-		if len(os.Args) < 3 {
+		if len(args) < 1 {
 			fmt.Fprintln(os.Stderr, "usage: siba get <package-url> [version]")
 			os.Exit(1)
 		}
 		version := "main"
-		if len(os.Args) >= 4 {
-			version = os.Args[3]
+		if len(args) >= 2 {
+			version = args[1]
 		}
-		runGet(os.Args[2], version)
+		runGet(args[0], version)
 	case "tidy":
 		runTidy()
 	case "run":
-		if len(os.Args) < 3 {
+		if len(args) < 1 {
 			fmt.Fprintln(os.Stderr, "usage: siba run <script-name>")
 			os.Exit(1)
 		}
-		runScript(os.Args[2])
-	case "graph":
-		runGraph(jsonMode)
+		runScript(args[0])
+	case "help":
+		if len(args) > 0 {
+			runHelp(args[0])
+		} else {
+			runHelp("")
+		}
 	case "version":
-		fmt.Println("siba v0.1.0")
+		fmt.Println("siba v0.2.0")
 	default:
 		printUsage()
 		os.Exit(1)
@@ -91,19 +168,32 @@ func main() {
 func printUsage() {
 	fmt.Println("SIBA — Structured Ink for Building Archives")
 	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  siba init                      Initialize a new project")
-	fmt.Println("  siba render [file.md]           Render documents")
-	fmt.Println("  siba render -o <dir>            Render to custom output directory")
-	fmt.Println("  siba check [file.md]            Check document(s) for errors")
-	fmt.Println("  siba get <pkg> [version]        Add a dependency")
+	fmt.Println("Read:")
+	fmt.Println("  siba cat <file[#symbol]>        Render and stream to stdout")
+	fmt.Println("  siba head [-n N] <file[#sym]>   First N lines (default 10)")
+	fmt.Println("  siba tail [-n N] <file[#sym]>   Last N lines (default 10)")
+	fmt.Println()
+	fmt.Println("Search:")
+	fmt.Println("  siba ls [file]                  List documents or symbols")
+	fmt.Println("  siba tree [file]                Heading tree")
+	fmt.Println("  siba tree --deps                Dependency tree")
+	fmt.Println("  siba find <query>               Search workspace")
+	fmt.Println()
+	fmt.Println("Build:")
+	fmt.Println("  siba export [-o dir]            Export to _export/{version}/")
+	fmt.Println("  siba check [file]               Validate documents")
+	fmt.Println()
+	fmt.Println("Manage:")
+	fmt.Println("  siba init                       Initialize project")
+	fmt.Println("  siba get <pkg> [version]        Add dependency")
 	fmt.Println("  siba tidy                       Remove unused dependencies")
-	fmt.Println("  siba run <script>               Run a script from module.toml")
-	fmt.Println("  siba graph                      Show dependency/reference graph")
+	fmt.Println("  siba run <script>               Run script from module.toml")
+	fmt.Println("  siba help [topic]               Show help")
 	fmt.Println("  siba version                    Show version")
 	fmt.Println()
 	fmt.Println("Flags:")
-	fmt.Println("  --json                          Output in JSON format")
+	fmt.Println("  --json    JSON output")
+	fmt.Println("  --raw     Raw source (no render)")
 }
 
 // --- JSON output types ---
@@ -221,21 +311,13 @@ func runInit() {
 	fmt.Println("created module.toml")
 }
 
-func runRender(jsonMode bool) {
-	args := argsWithout(2, "--json", "-o")
-
+func runExport(jsonMode bool) {
 	// find -o flag value
 	outputDir := ""
 	for i, arg := range os.Args {
 		if arg == "-o" && i+1 < len(os.Args) {
 			outputDir = os.Args[i+1]
 		}
-	}
-
-	// Single file render
-	if len(args) > 0 && args[0] != "-o" {
-		renderSingleFile(args[0], jsonMode)
-		return
 	}
 
 	// Workspace render
@@ -630,6 +712,633 @@ func splitPath(s string) []string {
 		parts = append(parts, current)
 	}
 	return parts
+}
+
+// --- Read commands ---
+
+// parseFileArg splits "file.md#symbol" into path and symbol parts
+func parseFileArg(fileArg string) (string, string) {
+	if idx := strings.Index(fileArg, "#"); idx >= 0 {
+		return fileArg[:idx], fileArg[idx+1:]
+	}
+	return fileArg, ""
+}
+
+func loadAndParse(fileArg string) (*ast.Document, string) {
+	path, symbol := parseFileArg(fileArg)
+	source, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	doc := parser.ParseDocument(path, string(source))
+	for _, d := range doc.Diagnostics {
+		if d.Severity == ast.SeverityError {
+			fmt.Fprintf(os.Stderr, "%s:%d: error: %s\n", path, d.Range.Start.Line, d.Message)
+		}
+	}
+	return doc, symbol
+}
+
+func renderOrRaw(doc *ast.Document, symbol string, rawMode bool) string {
+	var output string
+	if rawMode {
+		if symbol != "" {
+			output = extractSection(doc, symbol)
+		} else {
+			output = doc.Source
+		}
+	} else {
+		cwd, _ := os.Getwd()
+		ws, _ := workspace.LoadWorkspace(cwd)
+		rendered, err := render.RenderWithWorkspace(doc, ws)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "render error: %v\n", err)
+			os.Exit(1)
+		}
+		if symbol != "" {
+			// re-parse rendered output to extract section
+			tmpDoc := parser.ParseDocument(doc.Path, rendered)
+			output = extractSection(tmpDoc, symbol)
+		} else {
+			output = rendered
+		}
+	}
+	return output
+}
+
+func extractSection(doc *ast.Document, symbol string) string {
+	lines := strings.Split(doc.Source, "\n")
+	h := findHeading(doc.Headings, symbol)
+	if h == nil {
+		fmt.Fprintf(os.Stderr, "error: symbol %q not found\n", symbol)
+		os.Exit(1)
+	}
+	start := h.Position.Line - 1
+	end := h.Content.End.Line
+	if end <= 0 || end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[start:end], "\n") + "\n"
+}
+
+func findHeading(headings []*ast.Heading, symbol string) *ast.Heading {
+	for _, h := range headings {
+		if h.Slug == symbol || h.Name == symbol || h.Text == symbol {
+			return h
+		}
+		if found := findHeading(h.Children, symbol); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func runCat(fileArg string, rawMode bool) {
+	doc, symbol := loadAndParse(fileArg)
+	output := renderOrRaw(doc, symbol, rawMode)
+	fmt.Print(output)
+}
+
+func runHead(fileArg string, n int, rawMode bool) {
+	doc, symbol := loadAndParse(fileArg)
+	output := renderOrRaw(doc, symbol, rawMode)
+	lines := strings.Split(output, "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	fmt.Println(strings.Join(lines, "\n"))
+}
+
+func runTail(fileArg string, n int, rawMode bool) {
+	doc, symbol := loadAndParse(fileArg)
+	output := renderOrRaw(doc, symbol, rawMode)
+	lines := strings.Split(output, "\n")
+	// remove trailing empty line from split
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	fmt.Println(strings.Join(lines, "\n"))
+}
+
+// --- Search commands ---
+
+// JSONDocInfo represents a document in ls output
+type JSONDocInfo struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsTemplate bool   `json:"is_template"`
+}
+
+// JSONSymbolInfo represents a symbol in ls output
+type JSONSymbolInfo struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"` // "heading", "variable", "reference"
+	Line int    `json:"line"`
+}
+
+func runLs(fileArg string, jsonMode bool) {
+	if fileArg == "" {
+		// list all documents in workspace
+		cwd, _ := os.Getwd()
+		ws, err := workspace.LoadWorkspace(cwd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if jsonMode {
+			var docs []JSONDocInfo
+			for path, doc := range ws.DocsByPath {
+				name := doc.Name
+				if name == "" {
+					name = path
+				}
+				docs = append(docs, JSONDocInfo{
+					Name:       name,
+					Path:       path,
+					IsTemplate: doc.IsTemplate,
+				})
+			}
+			writeJSON(docs)
+			return
+		}
+
+		for path, doc := range ws.DocsByPath {
+			kind := "doc"
+			if doc.IsTemplate {
+				kind = "tmpl"
+			}
+			name := doc.Name
+			if name == "" {
+				name = path
+			}
+			fmt.Printf("%-6s %-30s %s\n", kind, name, path)
+		}
+		return
+	}
+
+	// list symbols in a specific file
+	doc, _ := loadAndParse(fileArg)
+
+	if jsonMode {
+		var symbols []JSONSymbolInfo
+		collectHeadingSymbols(doc.Headings, &symbols)
+		for _, v := range doc.Variables {
+			symbols = append(symbols, JSONSymbolInfo{
+				Name: v.Name,
+				Kind: "variable",
+				Line: v.Position.Line,
+			})
+		}
+		for _, r := range doc.References {
+			if !r.IsEscaped {
+				symbols = append(symbols, JSONSymbolInfo{
+					Name: r.Raw,
+					Kind: "reference",
+					Line: r.Position.Line,
+				})
+			}
+		}
+		writeJSON(symbols)
+		return
+	}
+
+	fmt.Printf("# %s\n", fileArg)
+	if len(doc.Headings) > 0 {
+		fmt.Println("\nHeadings:")
+		printHeadingList(doc.Headings, "  ")
+	}
+	if len(doc.Variables) > 0 {
+		fmt.Println("\nVariables:")
+		for _, v := range doc.Variables {
+			mut := "const"
+			if v.Mutability == ast.MutLet {
+				mut = "let"
+			}
+			fmt.Printf("  %s %s\n", mut, v.Name)
+		}
+	}
+	if len(doc.References) > 0 {
+		fmt.Println("\nReferences:")
+		for _, r := range doc.References {
+			if !r.IsEscaped {
+				fmt.Printf("  {{%s}}\n", r.Raw)
+			}
+		}
+	}
+}
+
+func collectHeadingSymbols(headings []*ast.Heading, symbols *[]JSONSymbolInfo) {
+	for _, h := range headings {
+		*symbols = append(*symbols, JSONSymbolInfo{
+			Name: h.Text,
+			Kind: "heading",
+			Line: h.Position.Line,
+		})
+		collectHeadingSymbols(h.Children, symbols)
+	}
+}
+
+func printHeadingList(headings []*ast.Heading, indent string) {
+	for _, h := range headings {
+		fmt.Printf("%s%s %s\n", indent, strings.Repeat("#", h.Level), h.Text)
+		printHeadingList(h.Children, indent+"  ")
+	}
+}
+
+// JSONHeadingTree represents a heading node in tree output
+type JSONHeadingTree struct {
+	Text     string            `json:"text"`
+	Slug     string            `json:"slug"`
+	Level    int               `json:"level"`
+	Children []JSONHeadingTree `json:"children,omitempty"`
+}
+
+func runTreeHeadings(fileArg string, jsonMode bool) {
+	if fileArg != "" {
+		doc, _ := loadAndParse(fileArg)
+
+		if jsonMode {
+			tree := buildHeadingTree(doc.Headings)
+			writeJSON(tree)
+			return
+		}
+
+		fmt.Printf("# %s\n", fileArg)
+		printHeadingTree(doc.Headings, "")
+		return
+	}
+
+	// workspace-wide heading overview
+	cwd, _ := os.Getwd()
+	ws, err := workspace.LoadWorkspace(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if jsonMode {
+		result := make(map[string][]JSONHeadingTree)
+		for path, doc := range ws.DocsByPath {
+			result[path] = buildHeadingTree(doc.Headings)
+		}
+		writeJSON(result)
+		return
+	}
+
+	for path, doc := range ws.DocsByPath {
+		name := doc.Name
+		if name == "" {
+			name = path
+		}
+		fmt.Printf("== %s ==\n", name)
+		printHeadingTree(doc.Headings, "  ")
+		fmt.Println()
+	}
+}
+
+func buildHeadingTree(headings []*ast.Heading) []JSONHeadingTree {
+	var tree []JSONHeadingTree
+	for _, h := range headings {
+		node := JSONHeadingTree{
+			Text:     h.Text,
+			Slug:     h.Slug,
+			Level:    h.Level,
+			Children: buildHeadingTree(h.Children),
+		}
+		tree = append(tree, node)
+	}
+	return tree
+}
+
+func printHeadingTree(headings []*ast.Heading, indent string) {
+	for _, h := range headings {
+		fmt.Printf("%s%s %s\n", indent, strings.Repeat("#", h.Level), h.Text)
+		printHeadingTree(h.Children, indent+"  ")
+	}
+}
+
+func runTreeDeps(jsonMode bool, dotMode bool) {
+	cwd, _ := os.Getwd()
+	ws, err := workspace.LoadWorkspace(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build nodes and edges (reuse runGraph logic)
+	var nodes []JSONGraphNode
+	docIDs := make(map[string]string)
+
+	for path, doc := range ws.DocsByPath {
+		id := path
+		if doc.Name != "" {
+			id = doc.Name
+		}
+		docIDs[path] = id
+		nodes = append(nodes, JSONGraphNode{
+			ID:         id,
+			Name:       doc.Name,
+			Path:       path,
+			IsTemplate: doc.IsTemplate,
+			Variables:  len(doc.Variables),
+			Headings:   countHeadings(doc.Headings),
+		})
+	}
+
+	var edges []JSONGraphEdge
+	for path, doc := range ws.DocsByPath {
+		sourceID := docIDs[path]
+
+		if doc.ExtendsName != "" {
+			edges = append(edges, JSONGraphEdge{
+				Source: sourceID,
+				Target: doc.ExtendsName,
+				Type:   "extends",
+			})
+		}
+
+		for _, ref := range doc.References {
+			if ref.IsEscaped {
+				continue
+			}
+			if ref.PathPart != "" && ref.Variable == "" {
+				if targetDoc := ws.GetDocument(ref.PathPart); targetDoc != nil {
+					edgeType := "ref"
+					if ref.Section != "" {
+						edgeType = "section_ref"
+					}
+					edges = append(edges, JSONGraphEdge{
+						Source: sourceID,
+						Target: ref.PathPart,
+						Type:   edgeType,
+					})
+				}
+			}
+			if ref.PathPart != "" && ref.Variable != "" {
+				if targetDoc := ws.GetDocument(ref.PathPart); targetDoc != nil {
+					edges = append(edges, JSONGraphEdge{
+						Source: sourceID,
+						Target: ref.PathPart,
+						Type:   "variable_ref",
+					})
+				}
+			}
+		}
+	}
+
+	result := JSONGraphResult{Nodes: nodes, Edges: edges}
+
+	if jsonMode {
+		writeJSON(result)
+		return
+	}
+
+	if dotMode {
+		fmt.Println("digraph siba {")
+		fmt.Println("  rankdir=LR;")
+		fmt.Println("  node [shape=box, style=rounded, fontname=\"sans-serif\"];")
+		fmt.Println()
+		for _, n := range nodes {
+			shape := "box"
+			if n.IsTemplate {
+				shape = "diamond"
+			}
+			label := n.ID
+			if n.Name != "" && n.Name != n.Path {
+				label = n.Name
+			}
+			fmt.Printf("  %q [label=%q, shape=%s];\n", n.ID, label, shape)
+		}
+		fmt.Println()
+		for _, e := range edges {
+			style := "solid"
+			color := "black"
+			label := ""
+			switch e.Type {
+			case "extends":
+				style = "bold"
+				color = "blue"
+				label = "extends"
+			case "ref":
+				color = "gray40"
+			case "section_ref":
+				color = "gray60"
+				style = "dashed"
+				label = "#"
+			case "variable_ref":
+				color = "orange"
+				style = "dotted"
+				label = "."
+			}
+			attrs := fmt.Sprintf("style=%s, color=%s", style, color)
+			if label != "" {
+				attrs += fmt.Sprintf(", label=%q", label)
+			}
+			fmt.Printf("  %q -> %q [%s];\n", e.Source, e.Target, attrs)
+		}
+		fmt.Println("}")
+		return
+	}
+
+	// text tree output (default)
+	// Build adjacency: source → targets
+	children := make(map[string][]string)
+	hasParent := make(map[string]bool)
+	for _, e := range edges {
+		children[e.Source] = append(children[e.Source], e.Target+" ("+e.Type+")")
+		hasParent[e.Target] = true
+	}
+
+	// Print roots first
+	for _, n := range nodes {
+		if !hasParent[n.ID] {
+			fmt.Println(n.ID)
+			printDepTree(children, n.ID, "  ", make(map[string]bool))
+		}
+	}
+}
+
+func printDepTree(children map[string][]string, node string, indent string, visited map[string]bool) {
+	if visited[node] {
+		return
+	}
+	visited[node] = true
+	for _, child := range children[node] {
+		fmt.Printf("%s→ %s\n", indent, child)
+		// extract actual node name (strip type suffix)
+		parts := strings.SplitN(child, " (", 2)
+		if len(parts) > 0 {
+			printDepTree(children, parts[0], indent+"  ", visited)
+		}
+	}
+}
+
+// JSONFindResult represents a search match
+type JSONFindResult struct {
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Text    string `json:"text"`
+	Kind    string `json:"kind,omitempty"` // "heading", "variable", "content"
+}
+
+func runFind(query string, headingOnly bool, variableOnly bool, jsonMode bool) {
+	cwd, _ := os.Getwd()
+	ws, err := workspace.LoadWorkspace(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var results []JSONFindResult
+	queryLower := strings.ToLower(query)
+
+	for path, doc := range ws.DocsByPath {
+		if headingOnly {
+			searchHeadings(doc.Headings, path, queryLower, &results)
+			continue
+		}
+		if variableOnly {
+			for _, v := range doc.Variables {
+				if strings.Contains(strings.ToLower(v.Name), queryLower) {
+					results = append(results, JSONFindResult{
+						File: path,
+						Line: v.Position.Line,
+						Text: v.Name,
+						Kind: "variable",
+					})
+				}
+			}
+			continue
+		}
+		// grep source text
+		lines := strings.Split(doc.Source, "\n")
+		for i, line := range lines {
+			if strings.Contains(strings.ToLower(line), queryLower) {
+				results = append(results, JSONFindResult{
+					File: path,
+					Line: i + 1,
+					Text: strings.TrimSpace(line),
+					Kind: "content",
+				})
+			}
+		}
+	}
+
+	if jsonMode {
+		if results == nil {
+			results = []JSONFindResult{}
+		}
+		writeJSON(results)
+		return
+	}
+
+	if len(results) == 0 {
+		fmt.Println("no matches found")
+		return
+	}
+	for _, r := range results {
+		fmt.Printf("%s:%d: %s\n", r.File, r.Line, r.Text)
+	}
+}
+
+func searchHeadings(headings []*ast.Heading, path string, query string, results *[]JSONFindResult) {
+	for _, h := range headings {
+		if strings.Contains(strings.ToLower(h.Text), query) {
+			*results = append(*results, JSONFindResult{
+				File: path,
+				Line: h.Position.Line,
+				Text: h.Text,
+				Kind: "heading",
+			})
+		}
+		searchHeadings(h.Children, path, query, results)
+	}
+}
+
+func runHelp(topic string) {
+	switch topic {
+	case "directives":
+		fmt.Println("SIBA Directives")
+		fmt.Println("================")
+		fmt.Println()
+		fmt.Println("  @doc <name>           Declare document name")
+		fmt.Println("  @template <name>      Declare as template")
+		fmt.Println("  @extends <name>       Inherit from template")
+		fmt.Println("  @name <name>          Name a heading section")
+		fmt.Println("  @default              Mark heading as default content")
+		fmt.Println("  @const <name> = val   Declare constant variable")
+		fmt.Println("  @let <name> = val     Declare mutable variable")
+		fmt.Println("  @import <alias> from <path>  Import document")
+		fmt.Println()
+		fmt.Println("All directives use HTML comment syntax: <!-- @directive ... -->")
+	case "variables":
+		fmt.Println("SIBA Variables")
+		fmt.Println("===============")
+		fmt.Println()
+		fmt.Println("  @const name = \"value\"     Immutable string")
+		fmt.Println("  @const count = 42         Immutable number")
+		fmt.Println("  @const flag = true        Immutable boolean")
+		fmt.Println("  @let name = \"default\"     Mutable (overridable by child)")
+		fmt.Println()
+		fmt.Println("Types: string, number, boolean, null, array, object, union")
+		fmt.Println("Access: default (visible to children), private (hidden)")
+	case "templates":
+		fmt.Println("SIBA Templates")
+		fmt.Println("===============")
+		fmt.Println()
+		fmt.Println("  <!-- @template my-template -->   Declare template")
+		fmt.Println("  <!-- @extends my-template -->    Use template")
+		fmt.Println()
+		fmt.Println("Templates define structure with @default sections.")
+		fmt.Println("Children override @default content with their own headings.")
+		fmt.Println("Variables from templates are inherited by children.")
+	case "references":
+		fmt.Println("SIBA References")
+		fmt.Println("================")
+		fmt.Println()
+		fmt.Println("  {{doc-name}}              Insert document content")
+		fmt.Println("  {{doc-name#section}}       Insert specific section")
+		fmt.Println("  {{doc-name.variable}}      Insert variable value")
+		fmt.Println("  {{.variable}}              Insert local variable")
+		fmt.Println("  \\{{escaped}}               Literal (not expanded)")
+	case "control":
+		fmt.Println("SIBA Control Flow")
+		fmt.Println("==================")
+		fmt.Println()
+		fmt.Println("  <!-- @if condition -->")
+		fmt.Println("    content")
+		fmt.Println("  <!-- @endif -->")
+		fmt.Println()
+		fmt.Println("  <!-- @for item in collection -->")
+		fmt.Println("    content with {{.item}}")
+		fmt.Println("  <!-- @endfor -->")
+	case "packages":
+		fmt.Println("SIBA Packages")
+		fmt.Println("==============")
+		fmt.Println()
+		fmt.Println("  siba get <url> [version]    Add dependency")
+		fmt.Println("  siba tidy                   Remove unused")
+		fmt.Println()
+		fmt.Println("Packages are declared in module.toml [dependencies].")
+		fmt.Println("Use @import to bring package documents into scope.")
+	default:
+		fmt.Println("SIBA Help Topics")
+		fmt.Println("=================")
+		fmt.Println()
+		fmt.Println("  siba help directives    @doc, @extends, @template, etc.")
+		fmt.Println("  siba help variables     @const, @let, types")
+		fmt.Println("  siba help templates     @template, @extends, @default")
+		fmt.Println("  siba help references    {{doc}}, {{doc.var}}, {{doc#sec}}")
+		fmt.Println("  siba help control       @if/@endif, @for/@endfor")
+		fmt.Println("  siba help packages      siba get, siba tidy, module.toml")
+		fmt.Println()
+		fmt.Println("Run 'siba help <topic>' for details.")
+	}
 }
 
 func runGraph(jsonMode bool) {

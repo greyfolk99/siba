@@ -78,16 +78,16 @@ func LoadWorkspace(root string) (*Workspace, error) {
 	return w, nil
 }
 
-// DiscoverDocuments finds all .md files recursively, skipping _render and .siba dirs
+// DiscoverDocuments finds all .md files recursively, skipping _export and .siba dirs
 func DiscoverDocuments(root string) []string {
 	var paths []string
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		// skip hidden dirs, _render, node_modules
+		// skip hidden dirs, _export, node_modules
 		name := info.Name()
-		if info.IsDir() && (strings.HasPrefix(name, ".") || name == "_render" || name == "node_modules") {
+		if info.IsDir() && (strings.HasPrefix(name, ".") || name == "_export" || name == "node_modules") {
 			return filepath.SkipDir
 		}
 		if !info.IsDir() && strings.HasSuffix(name, ".md") {

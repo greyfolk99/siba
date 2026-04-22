@@ -321,7 +321,7 @@ func cleanBlankLines(content string) string {
 func RenderWorkspace(w *workspace.Workspace, outputDir string) error {
 	version := w.GetVersion()
 	if outputDir == "" {
-		outputDir = filepath.Join(w.Root, "_render")
+		outputDir = filepath.Join(w.Root, "_export")
 	}
 	versionDir := filepath.Join(outputDir, "v"+version)
 
