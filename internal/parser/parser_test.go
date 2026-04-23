@@ -256,3 +256,155 @@ func TestTemplateWithName(t *testing.T) {
 		t.Errorf("expected no diagnostics, got %v", doc.Diagnostics)
 	}
 }
+
+// TestParseImport verifies that an @import directive with "alias from path" syntax
+// is correctly parsed into an Import with the expected alias and path fields.
+func TestParseImport(t *testing.T) {
+	source := `<!-- @import utils from ./shared/utils -->
+# Main`
+
+	doc := ParseDocument("test.md", source)
+
+	if len(doc.Imports) != 1 {
+		t.Fatalf("expected 1 import, got %d", len(doc.Imports))
+	}
+	imp := doc.Imports[0]
+	if imp.Alias != "utils" {
+		t.Errorf("expected alias 'utils', got %q", imp.Alias)
+	}
+	if imp.Path != "./shared/utils" {
+		t.Errorf("expected path './shared/utils', got %q", imp.Path)
+	}
+}
+
+// TestMultilineConst verifies that a @const directive spanning multiple lines
+// (e.g., an array literal split across lines inside <!-- ... -->) is parsed
+// into a single variable with the correct array value.
+func TestMultilineConst(t *testing.T) {
+	source := `<!-- @const items = [
+  "alpha",
+  "beta",
+  "gamma"
+] -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	var found *ast.Variable
+	for i := range doc.Variables {
+		if doc.Variables[i].Name == "items" {
+			found = &doc.Variables[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected variable 'items' to be parsed")
+	}
+	if found.Value == nil {
+		t.Fatal("expected 'items' to have a value")
+	}
+	if found.Value.Kind != ast.TypeArray {
+		t.Errorf("expected array type, got %d", found.Value.Kind)
+	}
+	if len(found.Value.Array) != 3 {
+		t.Errorf("expected 3 elements, got %d", len(found.Value.Array))
+	}
+}
+
+// TestParsePrivateConst verifies that a @const directive with the "private"
+// access modifier sets the variable's Access field to AccessPrivate.
+func TestParsePrivateConst(t *testing.T) {
+	source := `<!-- @const private secret = "hidden" -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	var found *ast.Variable
+	for i := range doc.Variables {
+		if doc.Variables[i].Name == "secret" {
+			found = &doc.Variables[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected variable 'secret' to be parsed")
+	}
+	if found.Access != ast.AccessPrivate {
+		t.Errorf("expected AccessPrivate, got %d", found.Access)
+	}
+	if found.Value == nil || found.Value.Str != "hidden" {
+		t.Errorf("expected value 'hidden', got %v", found.Value)
+	}
+}
+
+// TestParseHashRef verifies that a {{#section}} reference is parsed with an
+// empty PathPart and the section name in the Section field.
+func TestParseHashRef(t *testing.T) {
+	source := `# Main
+Content with {{#section}} reference`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, ref := range doc.References {
+		if ref.Section == "section" && ref.PathPart == "" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a reference with Section='section' and empty PathPart, got refs: %+v", doc.References)
+	}
+}
+
+// TestParseAliasHashRef verifies that a {{alias#symbol}} reference is parsed
+// with the alias in PathPart and the symbol in the Section field.
+func TestParseAliasHashRef(t *testing.T) {
+	source := `<!-- @import utils from ./utils -->
+# Main
+See {{utils#helper}} for details`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, ref := range doc.References {
+		if ref.PathPart == "utils" && ref.Section == "helper" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a reference with PathPart='utils' and Section='helper', got refs: %+v", doc.References)
+	}
+}
+
+// TestParseDocuments_Multi verifies that a single file containing multiple
+// @template declarations is split into separate Document instances, each with
+// the correct name and IsTemplate flag set.
+func TestParseDocuments_Multi(t *testing.T) {
+	source := `<!-- @template api-spec -->
+# API Spec
+## Endpoints
+
+<!-- @template error-spec -->
+# Error Spec
+## Error Codes`
+
+	docs := ParseDocuments("multi.md", source)
+
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(docs))
+	}
+	if docs[0].Name != "api-spec" {
+		t.Errorf("expected first doc name 'api-spec', got %q", docs[0].Name)
+	}
+	if !docs[0].IsTemplate {
+		t.Error("expected first doc IsTemplate=true")
+	}
+	if docs[1].Name != "error-spec" {
+		t.Errorf("expected second doc name 'error-spec', got %q", docs[1].Name)
+	}
+	if !docs[1].IsTemplate {
+		t.Error("expected second doc IsTemplate=true")
+	}
+}
