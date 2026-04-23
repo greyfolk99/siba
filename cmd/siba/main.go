@@ -902,31 +902,21 @@ func runLs(fileArg string, jsonMode bool) {
 
 		if jsonMode {
 			var docs []JSONDocInfo
-			for path, doc := range ws.DocsByPath {
-				name := doc.Name
-				if name == "" {
-					name = path
-				}
-				docs = append(docs, JSONDocInfo{
-					Name:       name,
-					Path:       path,
-					IsTemplate: doc.IsTemplate,
-				})
+			for name, doc := range ws.Documents {
+				docs = append(docs, JSONDocInfo{Name: name, Path: doc.Path, IsTemplate: false})
+			}
+			for name, doc := range ws.Templates {
+				docs = append(docs, JSONDocInfo{Name: name, Path: doc.Path, IsTemplate: true})
 			}
 			writeJSON(docs)
 			return
 		}
 
-		for path, doc := range ws.DocsByPath {
-			kind := "doc"
-			if doc.IsTemplate {
-				kind = "tmpl"
-			}
-			name := doc.Name
-			if name == "" {
-				name = path
-			}
-			fmt.Printf("%-6s %-30s %s\n", kind, name, path)
+		for name, doc := range ws.Templates {
+			fmt.Printf("%-6s %-30s %s\n", "tmpl", name, doc.Path)
+		}
+		for name, doc := range ws.Documents {
+			fmt.Printf("%-6s %-30s %s\n", "doc", name, doc.Path)
 		}
 		return
 	}

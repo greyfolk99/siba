@@ -15,6 +15,73 @@ var (
 	forRe        = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
 )
 
+// ParseDocuments parses a file that may contain multiple @template/@doc declarations.
+// Returns one Document per declaration. If none found, returns a single unnamed Document.
+func ParseDocuments(path string, source string) []*ast.Document {
+	directives := ParseDirectives(source)
+	lines := strings.Split(source, "\n")
+
+	// Find all @template/@doc declaration positions
+	type declInfo struct {
+		line       int
+		name       string
+		isTemplate bool
+	}
+	var decls []declInfo
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveTemplate {
+			decls = append(decls, declInfo{line: d.Position.Line, name: strings.TrimSpace(d.Args), isTemplate: true})
+		} else if d.Kind == ast.DirectiveDoc {
+			decls = append(decls, declInfo{line: d.Position.Line, name: strings.TrimSpace(d.Args), isTemplate: false})
+		}
+	}
+
+	// If 0 or 1 declaration, use single ParseDocument
+	if len(decls) <= 1 {
+		doc := ParseDocument(path, source)
+		return []*ast.Document{doc}
+	}
+
+	// Multiple declarations — split source into segments
+	var docs []*ast.Document
+	for i, decl := range decls {
+		startLine := decl.line - 1 // 0-based
+		var endLine int
+		if i+1 < len(decls) {
+			endLine = decls[i+1].line - 2 // line before next declaration's directive
+			// scan backwards to include any directives above the next declaration
+			for endLine > startLine && strings.TrimSpace(lines[endLine]) == "" {
+				endLine--
+			}
+			endLine++ // include the last non-empty line
+		} else {
+			endLine = len(lines)
+		}
+
+		if startLine < 0 {
+			startLine = 0
+		}
+		if endLine > len(lines) {
+			endLine = len(lines)
+		}
+
+		// Include file-level directives (@import, @const before first decl) for first segment
+		segmentStart := startLine
+		if i == 0 {
+			segmentStart = 0
+		}
+
+		segment := strings.Join(lines[segmentStart:endLine], "\n")
+		doc := ParseDocument(path, segment)
+		// override name/template from the declaration
+		doc.Name = decl.name
+		doc.IsTemplate = decl.isTemplate
+		docs = append(docs, doc)
+	}
+
+	return docs
+}
+
 // ParseDocument parses a complete document from source
 func ParseDocument(path string, source string) *ast.Document {
 	doc := &ast.Document{

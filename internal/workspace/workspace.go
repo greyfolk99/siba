@@ -56,7 +56,7 @@ func LoadWorkspace(root string) (*Workspace, error) {
 		w.Config = config
 	}
 
-	// Discover and parse all .md files
+	// Discover and parse all .md files (supports multiple docs per file)
 	paths := DiscoverDocuments(root)
 	for _, path := range paths {
 		source, err := os.ReadFile(path)
@@ -64,14 +64,18 @@ func LoadWorkspace(root string) (*Workspace, error) {
 			continue
 		}
 		relPath, _ := filepath.Rel(root, path)
-		doc := parser.ParseDocument(relPath, string(source))
-		w.DocsByPath[relPath] = doc
-
-		if doc.Name != "" {
-			w.Documents[doc.Name] = doc
-		}
-		if doc.IsTemplate && doc.Name != "" {
-			w.Templates[doc.Name] = doc
+		docs := parser.ParseDocuments(relPath, string(source))
+		for i, doc := range docs {
+			if i == 0 {
+				w.DocsByPath[relPath] = doc // first doc for path lookup
+			}
+			if doc.Name != "" {
+				if doc.IsTemplate {
+					w.Templates[doc.Name] = doc
+				} else {
+					w.Documents[doc.Name] = doc
+				}
+			}
 		}
 	}
 
