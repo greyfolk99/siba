@@ -22,25 +22,25 @@ func RunScript(name string, config *workspace.ModuleConfig) error {
 	return executeCommand(cmd)
 }
 
-// RunPrerender runs the prerender script if defined
-func RunPrerender(config *workspace.ModuleConfig) error {
+// RunPreexport runs the preexport script if defined
+func RunPreexport(config *workspace.ModuleConfig) error {
 	if config == nil || config.Scripts == nil {
 		return nil
 	}
-	if cmd, ok := config.Scripts["prerender"]; ok {
-		fmt.Println("running prerender...")
+	if cmd, ok := config.Scripts["preexport"]; ok {
+		fmt.Println("running preexport...")
 		return executeCommand(cmd)
 	}
 	return nil
 }
 
-// RunPostrender runs the postrender script if defined
-func RunPostrender(config *workspace.ModuleConfig) error {
+// RunPostexport runs the postexport script if defined
+func RunPostexport(config *workspace.ModuleConfig) error {
 	if config == nil || config.Scripts == nil {
 		return nil
 	}
-	if cmd, ok := config.Scripts["postrender"]; ok {
-		fmt.Println("running postrender...")
+	if cmd, ok := config.Scripts["postexport"]; ok {
+		fmt.Println("running postexport...")
 		return executeCommand(cmd)
 	}
 	return nil

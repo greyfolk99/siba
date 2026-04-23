@@ -333,8 +333,8 @@ func runExport(jsonMode bool) {
 		os.Exit(1)
 	}
 
-	if err := scripts.RunPrerender(w.Config); err != nil {
-		fmt.Fprintf(os.Stderr, "prerender failed: %v\n", err)
+	if err := scripts.RunPreexport(w.Config); err != nil {
+		fmt.Fprintf(os.Stderr, "preexport failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -348,8 +348,8 @@ func runExport(jsonMode bool) {
 		os.Exit(1)
 	}
 
-	if err := scripts.RunPostrender(w.Config); err != nil {
-		fmt.Fprintf(os.Stderr, "postrender failed: %v\n", err)
+	if err := scripts.RunPostexport(w.Config); err != nil {
+		fmt.Fprintf(os.Stderr, "postexport failed: %v\n", err)
 		os.Exit(1)
 	}
 
