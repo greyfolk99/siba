@@ -45,15 +45,35 @@ func ResolveReference(ref ast.Reference, currentDoc *ast.Document, rootScope *sc
 		return resolveSymbolRef(ref, currentDoc, ws)
 	}
 
-	// Case 2: obj.prop — local object property access
+	// Case 2: obj.prop — local object property OR @import alias.var
 	if ref.PathPart != "" && ref.Variable != "" {
 		lineScope := scope.FindScopeForLine(rootScope, ref.Position.Line)
+		// Try local object property
 		if v, ok := lineScope.Resolve(ref.PathPart); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
 			if prop, ok := v.Value.Object[ref.Variable]; ok {
 				return &ResolvedRef{
 					Kind:  ResolvedVariable,
 					Value: ast.ValueToString(prop),
 				}, nil
+			}
+		}
+		// Try @import alias.variable (module-level variable)
+		if currentDoc != nil && ws != nil {
+			for _, imp := range currentDoc.Imports {
+				if imp.Alias == ref.PathPart {
+					targetDoc := resolveImportPath(imp.Path, ws)
+					if targetDoc != nil {
+						for i, tv := range targetDoc.Variables {
+							if tv.Name == ref.Variable && tv.Access != ast.AccessPrivate && tv.Value != nil {
+								return &ResolvedRef{
+									Kind:     ResolvedVariable,
+									Value:    ast.ValueToString(*tv.Value),
+									Variable: &targetDoc.Variables[i],
+								}, nil
+							}
+						}
+					}
+				}
 			}
 		}
 		return nil, &ast.Diagnostic{
