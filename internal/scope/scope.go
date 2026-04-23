@@ -118,6 +118,14 @@ func BuildScopeTree(doc *ast.Document) (*Scope, []ast.Diagnostic) {
 		buildHeadingScope(h, root)
 	}
 
+	// Build control block scopes (@if/@for create their own scope)
+	for _, cb := range doc.ControlBlocks {
+		parent := findScopeForLine(root, cb.Start.Line)
+		cbScope := NewScope("__control__", ScopeControlBlock, parent)
+		cbScope.StartLine = cb.Start.Line + 1 // content starts after @if/@for
+		cbScope.EndLine = cb.End.Line - 1     // content ends before @endif/@endfor
+	}
+
 	// assign variables to correct scope based on line position
 	var diags []ast.Diagnostic
 	for _, v := range doc.Variables {
