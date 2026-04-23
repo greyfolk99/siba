@@ -1117,3 +1117,58 @@ func TestFindScopeForLine_AdjacentSiblingsSharedBoundary(t *testing.T) {
 		t.Errorf("expected 'b' for line 6, got %q", s.Name)
 	}
 }
+
+// TestBuildScopeTree_DeepEndLineExpansion verifies that EndLine expansion works recursively through grandchild scopes.
+func TestBuildScopeTree_DeepEndLineExpansion(t *testing.T) {
+	// H1 Content.End=2, H2 Content.End=4, H3 Content.End=8
+	// H1's EndLine should expand to 8 through H2→H3 chain
+	doc := &ast.Document{
+		Source: "# L1\ntext\n## L2\ntext\n### L3\ntext\ntext\ntext\n",
+		Headings: []*ast.Heading{
+			{
+				Level: 1, Text: "L1", Slug: "l1",
+				Position: ast.Position{Line: 1},
+				Content:  ast.Range{Start: ast.Position{Line: 2}, End: ast.Position{Line: 2}},
+				Children: []*ast.Heading{
+					{
+						Level: 2, Text: "L2", Slug: "l2",
+						Position: ast.Position{Line: 3},
+						Content:  ast.Range{Start: ast.Position{Line: 4}, End: ast.Position{Line: 4}},
+						Children: []*ast.Heading{
+							{
+								Level: 3, Text: "L3", Slug: "l3",
+								Position: ast.Position{Line: 5},
+								Content:  ast.Range{Start: ast.Position{Line: 6}, End: ast.Position{Line: 8}},
+							},
+						},
+					},
+				},
+			},
+		},
+		Variables: []ast.Variable{
+			{Name: "root-var", Mutability: ast.MutConst, Value: &ast.Value{Kind: ast.TypeString, Str: "root"}, Position: ast.Position{Line: 2}},
+			{Name: "deep-var", Mutability: ast.MutLet, Value: &ast.Value{Kind: ast.TypeString, Str: "deep"}, Position: ast.Position{Line: 8}},
+		},
+	}
+
+	root, diags := BuildScopeTree(doc)
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	// Line 8 should be inside L3 scope (deepest), and L1's EndLine should cover it
+	scopeL3 := FindScopeForLine(root, 8)
+	if scopeL3.Name != "l3" {
+		t.Fatalf("expected scope 'l3' for line 8, got %q", scopeL3.Name)
+	}
+
+	// deep-var should be in L3 scope
+	if v, ok := scopeL3.Resolve("deep-var"); !ok || v.Value.Str != "deep" {
+		t.Fatal("expected deep-var='deep' in L3 scope")
+	}
+
+	// root-var should be visible from L3 via chain
+	if v, ok := scopeL3.Resolve("root-var"); !ok || v.Value.Str != "root" {
+		t.Fatal("expected root-var='root' visible from L3")
+	}
+}

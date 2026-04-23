@@ -140,18 +140,10 @@ func buildHeadingScope(h *ast.Heading, parent *Scope) {
 		buildHeadingScope(child, s)
 	}
 
-	// Extend parent scope's EndLine to cover all children
-	if len(h.Children) > 0 {
-		lastChild := h.Children[len(h.Children)-1]
-		lastChildEnd := lastChild.Content.End.Line
-		// Also check if children have their own children
-		for _, ch := range h.Children {
-			if ch.Content.End.Line > lastChildEnd {
-				lastChildEnd = ch.Content.End.Line
-			}
-		}
-		if lastChildEnd > s.EndLine {
-			s.EndLine = lastChildEnd
+	// Extend EndLine to cover all child scopes (recursively expanded)
+	for _, childScope := range s.Children {
+		if childScope.EndLine > s.EndLine {
+			s.EndLine = childScope.EndLine
 		}
 	}
 }
