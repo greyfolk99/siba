@@ -201,8 +201,8 @@ func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Docume
 			}
 			defer ctx.Leave(varKey)
 
-			// try local variable
-			if v, ok := currentScope.Resolve(inner); ok && v.Value != nil {
+			// try local variable (with TDZ)
+			if v, ok := currentScope.ResolveAt(inner, lineNo); ok && v.Value != nil {
 				value := ast.ValueToString(*v.Value)
 				ctx.Cache(varKey, value)
 				return value
@@ -213,7 +213,7 @@ func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Docume
 				objName := inner[:dotIdx]
 				propName := inner[dotIdx+1:]
 				// local object property
-				if v, ok := currentScope.Resolve(objName); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
+				if v, ok := currentScope.ResolveAt(objName, lineNo); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
 					if prop, ok := v.Value.Object[propName]; ok {
 						value := ast.ValueToString(prop)
 						ctx.Cache(varKey, value)

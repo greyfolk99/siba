@@ -128,15 +128,22 @@ func (w *Workspace) GetVersion() string {
 	return "0.0.0"
 }
 
-// RefreshDocument re-parses a single document
+// RefreshDocument re-parses a single document, cleaning up stale entries
 func (w *Workspace) RefreshDocument(path string, source string) {
+	// Remove old entries for this path
+	if old, ok := w.DocsByPath[path]; ok && old.Name != "" {
+		delete(w.Documents, old.Name)
+		delete(w.Templates, old.Name)
+	}
+
 	doc := parser.ParseDocument(path, source)
 	w.DocsByPath[path] = doc
 	if doc.Name != "" {
-		w.Documents[doc.Name] = doc
-	}
-	if doc.IsTemplate && doc.Name != "" {
-		w.Templates[doc.Name] = doc
+		if doc.IsTemplate {
+			w.Templates[doc.Name] = doc
+		} else {
+			w.Documents[doc.Name] = doc
+		}
 	}
 }
 

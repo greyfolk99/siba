@@ -10,8 +10,8 @@ import (
 
 var (
 	refRe        = regexp.MustCompile(`(?:\\)?\{\{([^}]+)\}\}`)
-	varDeclRe    = regexp.MustCompile(`^(private\s+|protected\s+)?(\w[\w-]*)\s*(?::\s*(.+?))?\s*=\s*(.+)$`)
-	varTypeDeclRe = regexp.MustCompile(`^(private\s+|protected\s+)?(\w[\w-]*)\s*:\s*(.+)$`)
+	varDeclRe    = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*(?::\s*(.+?))?\s*=\s*(.+)$`)
+	varTypeDeclRe = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*:\s*(.+)$`)
 	forRe        = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
 )
 

@@ -2,23 +2,65 @@ package template
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hjseo/siba/internal/ast"
 	"github.com/hjseo/siba/internal/workspace"
 )
 
-// ResolveTemplate finds the template for a document that uses @extends
+// ResolveTemplate finds the template for a document that uses @extends.
+// Supports: @extends name, @extends #name, @extends alias#name
 func ResolveTemplate(doc *ast.Document, ws *workspace.Workspace) (*ast.Document, *ast.Diagnostic) {
 	if doc.ExtendsName == "" {
 		return nil, nil
 	}
 
-	tmpl := ws.GetTemplate(doc.ExtendsName)
+	name := doc.ExtendsName
+
+	// Strip leading # (current file reference)
+	name = strings.TrimPrefix(name, "#")
+
+	// Handle alias#name — resolve via imports
+	if idx := strings.Index(name, "#"); idx > 0 {
+		alias := name[:idx]
+		symbol := name[idx+1:]
+
+		// Find import path
+		importPath := ""
+		for _, imp := range doc.Imports {
+			if imp.Alias == alias {
+				importPath = imp.Path
+				break
+			}
+		}
+		if importPath == "" {
+			return nil, &ast.Diagnostic{
+				Severity: ast.SeverityError,
+				Code:     "E071",
+				Message:  fmt.Sprintf("import alias not found for extends: %s", doc.ExtendsName),
+			}
+		}
+
+		// Find template by symbol name in imported file's templates
+		tmpl := ws.GetTemplate(symbol)
+		if tmpl != nil {
+			return tmpl, nil
+		}
+
+		return nil, &ast.Diagnostic{
+			Severity: ast.SeverityError,
+			Code:     "E071",
+			Message:  fmt.Sprintf("template not found: %s (via import %s)", symbol, alias),
+		}
+	}
+
+	// Simple name — direct lookup
+	tmpl := ws.GetTemplate(name)
 	if tmpl == nil {
 		return nil, &ast.Diagnostic{
 			Severity: ast.SeverityError,
 			Code:     "E071",
-			Message:  fmt.Sprintf("template not found: %s", doc.ExtendsName),
+			Message:  fmt.Sprintf("template not found: %s", name),
 		}
 	}
 
