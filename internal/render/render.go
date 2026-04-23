@@ -327,8 +327,7 @@ func cleanBlankLines(content string) string {
 	return strings.Join(result, "\n")
 }
 
-// RenderWorkspace renders all documents in a workspace to _render/{version}/
-// Uses a shared EvalContext so cross-document cycles are detected.
+// RenderWorkspace exports all documents to _export/{version}/ using StreamRender.
 func RenderWorkspace(w *workspace.Workspace, outputDir string) error {
 	version := w.GetVersion()
 	if outputDir == "" {
@@ -345,30 +344,35 @@ func RenderWorkspace(w *workspace.Workspace, outputDir string) error {
 			continue
 		}
 
-		output, err := RenderWithContext(doc, ctx, w)
-		if err != nil {
-			if cycleErr, ok := err.(*CycleError); ok {
-				fmt.Fprintf(os.Stderr, "cycle error in %s: %s\n", path, cycleErr.Error())
-			} else {
-				fmt.Fprintf(os.Stderr, "error rendering %s: %v\n", path, err)
-			}
-			errorCount++
-			continue
-		}
-
 		outPath := filepath.Join(versionDir, path)
 		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 			return fmt.Errorf("failed to create output dir: %w", err)
 		}
-		if err := os.WriteFile(outPath, []byte(output), 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", outPath, err)
+
+		f, err := os.Create(outPath)
+		if err != nil {
+			return fmt.Errorf("failed to create %s: %w", outPath, err)
 		}
 
-		fmt.Printf("  rendered: %s\n", outPath)
+		err = StreamRenderWithContext(doc, f, ctx, w)
+		f.Close()
+
+		if err != nil {
+			if cycleErr, ok := err.(*CycleError); ok {
+				fmt.Fprintf(os.Stderr, "cycle error in %s: %s\n", path, cycleErr.Error())
+			} else {
+				fmt.Fprintf(os.Stderr, "error exporting %s: %v\n", path, err)
+			}
+			os.Remove(outPath)
+			errorCount++
+			continue
+		}
+
+		fmt.Printf("  exported: %s\n", outPath)
 	}
 
 	if errorCount > 0 {
-		return fmt.Errorf("%d file(s) failed to render", errorCount)
+		return fmt.Errorf("%d file(s) failed to export", errorCount)
 	}
 	return nil
 }
