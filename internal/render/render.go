@@ -133,6 +133,7 @@ func RenderWithContext(doc *ast.Document, ctx *EvalContext, ws *workspace.Worksp
 		if tmplDoc != nil {
 			doc.Variables = template.InheritVariables(doc, tmplDoc)
 			doc.Headings = template.MergeHeadings(doc, tmplDoc)
+			doc.Source = injectDefaultSections(doc.Source, tmplDoc)
 		}
 	}
 
