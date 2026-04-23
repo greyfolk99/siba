@@ -15,12 +15,22 @@ import (
 func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnostic {
 	var diags []ast.Diagnostic
 
+	// 0. Apply template inheritance before validation (so inherited vars are visible)
+	if doc.ExtendsName != "" && ws != nil {
+		tmpl, _ := template.ResolveTemplate(doc, ws)
+		if tmpl != nil {
+			doc.Variables = template.InheritVariables(doc, tmpl)
+		}
+	}
+
 	// 1. Build scope tree (catches duplicate declarations, const shadowing)
 	rootScope, scopeDiags := scope.BuildScopeTree(doc)
 	diags = append(diags, scopeDiags...)
 
-	// 2. Validate references (unresolved refs, missing docs/sections)
+	// 2. Validate references — skip refs inside @for/@if blocks that use iterator vars
 	refDiags := refs.ValidateReferences(doc, rootScope, ws)
+	// Filter out false positives from @for iterator variables
+	refDiags = filterForIteratorFalsePositives(doc, refDiags)
 	diags = append(diags, refDiags...)
 
 	// 3. Template contract validation (if extending a template)
@@ -37,6 +47,68 @@ func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnost
 	}
 
 	return diags
+}
+
+// filterForIteratorFalsePositives removes E050 diagnostics for variables that are
+// @for iterator names or iterator property accesses (e.g., {{item}}, {{item.name}}).
+// These are resolved at render time, not at static analysis time.
+func filterForIteratorFalsePositives(doc *ast.Document, diags []ast.Diagnostic) []ast.Diagnostic {
+	// Collect all @for iterator names and their line ranges
+	type forInfo struct {
+		iterator string
+		start    int
+		end      int
+	}
+	var fors []forInfo
+	for _, cb := range doc.ControlBlocks {
+		if cb.Kind == ast.DirectiveFor && cb.Iterator != "" {
+			fors = append(fors, forInfo{
+				iterator: cb.Iterator,
+				start:    cb.Start.Line,
+				end:      cb.End.Line,
+			})
+		}
+	}
+
+	if len(fors) == 0 {
+		return diags
+	}
+
+	var filtered []ast.Diagnostic
+	for _, d := range diags {
+		if d.Code == "E050" {
+			skip := false
+			for _, f := range fors {
+				line := d.Range.Start.Line
+				if line >= f.start && line <= f.end {
+					// Check if the unresolved ref matches the iterator name or iterator.prop
+					msg := d.Message
+					if contains(msg, f.iterator) {
+						skip = true
+						break
+					}
+				}
+			}
+			if skip {
+				continue
+			}
+		}
+		filtered = append(filtered, d)
+	}
+	return filtered
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) > 0 && findSubstring(s, substr))
+}
+
+func findSubstring(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }
 
 func validateTemplate(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnostic {

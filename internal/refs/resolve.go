@@ -193,13 +193,29 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 	}
 
 	// resolve symbol within the target document
-	// First try heading by name/slug
+	// Try heading by name/slug
 	heading := findHeading(targetDoc.Headings, symbol)
 	if heading != nil {
 		return &ResolvedRef{
 			Kind:    ResolvedSection,
 			Heading: heading,
 		}, nil
+	}
+
+	// Try as @template/@doc name in workspace
+	if ws != nil {
+		if tmpl := ws.GetTemplate(symbol); tmpl != nil {
+			return &ResolvedRef{
+				Kind:     ResolvedDocument,
+				Document: tmpl,
+			}, nil
+		}
+		if doc := ws.GetDocument(symbol); doc != nil {
+			return &ResolvedRef{
+				Kind:     ResolvedDocument,
+				Document: doc,
+			}, nil
+		}
 	}
 
 	// For nested symbols with /, try the first segment
