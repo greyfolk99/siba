@@ -45,18 +45,29 @@ func TestMatchesHeading_EmptyTargetSlugAndName(t *testing.T) {
 // TestMergeHeadings_RequiredMissing verifies that a missing @required heading is dropped while @default is kept in the merge.
 func TestMergeHeadings_RequiredMissing(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Required Section", "required-section", "", ast.AnnotationRequired),
-		h(1, "Default Section", "default-section", "", ast.AnnotationDefault),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Required Section", "required-section", "", ast.AnnotationRequired),
+			h(2, "Default Section", "default-section", "", ast.AnnotationDefault),
+		),
 	})
-	child := &ast.Document{Headings: nil}
+	child := &ast.Document{
+		Headings: []*ast.Heading{
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired),
+		},
+	}
 
 	result := MergeHeadings(child, tmpl)
-	// required missing → dropped, default → used
+	// result[0] is child's H1
 	if len(result) != 1 {
-		t.Fatalf("expected 1 heading (only default), got %d", len(result))
+		t.Fatalf("expected 1 top-level heading, got %d", len(result))
 	}
-	if result[0].Text != "Default Section" {
-		t.Fatalf("expected 'Default Section', got %q", result[0].Text)
+	children := result[0].Children
+	// required missing → dropped, default → used
+	if len(children) != 1 {
+		t.Fatalf("expected 1 child heading (only default), got %d", len(children))
+	}
+	if children[0].Text != "Default Section" {
+		t.Fatalf("expected 'Default Section', got %q", children[0].Text)
 	}
 }
 
@@ -216,27 +227,35 @@ func TestValidateContract_DeeplyNested(t *testing.T) {
 // TestMergeHeadings_OrderPreserved verifies that merged output follows template order first, with extras appended.
 func TestMergeHeadings_OrderPreserved(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "First", "first", "", ast.AnnotationRequired),
-		h(1, "Second", "second", "", ast.AnnotationRequired),
-		h(1, "Third", "third", "", ast.AnnotationDefault),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "First", "first", "", ast.AnnotationRequired),
+			h(2, "Second", "second", "", ast.AnnotationRequired),
+			h(2, "Third", "third", "", ast.AnnotationDefault),
+		),
 	})
 	child := &ast.Document{
 		Headings: []*ast.Heading{
-			h(1, "Extra", "extra", "", ast.AnnotationRequired),
-			h(1, "Second", "second", "", ast.AnnotationRequired),
-			h(1, "First", "first", "", ast.AnnotationRequired),
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired,
+				h(2, "Extra", "extra", "", ast.AnnotationRequired),
+				h(2, "Second", "second", "", ast.AnnotationRequired),
+				h(2, "First", "first", "", ast.AnnotationRequired),
+			),
 		},
 	}
 
 	result := MergeHeadings(child, tmpl)
-	if len(result) != 4 {
-		t.Fatalf("expected 4 headings, got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 top-level heading, got %d", len(result))
+	}
+	children := result[0].Children
+	if len(children) != 4 {
+		t.Fatalf("expected 4 children, got %d", len(children))
 	}
 	// order should be: First, Second, Third (default), Extra
 	expectedOrder := []string{"First", "Second", "Third", "Extra"}
 	for i, expected := range expectedOrder {
-		if result[i].Text != expected {
-			t.Fatalf("position %d: expected %q, got %q", i, expected, result[i].Text)
+		if children[i].Text != expected {
+			t.Fatalf("position %d: expected %q, got %q", i, expected, children[i].Text)
 		}
 	}
 }

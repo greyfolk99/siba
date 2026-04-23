@@ -303,6 +303,13 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 			return match
 		}
 
+		// cycle detection for variables
+		varKey := "var:" + ip.doc.Path + ":" + inner
+		if err := ip.ctx.Enter(varKey); err != nil {
+			return match // cycle — leave unresolved
+		}
+		defer ip.ctx.Leave(varKey)
+
 		// local variable
 		if v, ok := currentScope.Resolve(inner); ok && v.Value != nil {
 			return ast.ValueToString(*v.Value)

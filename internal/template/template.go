@@ -22,14 +22,6 @@ func ResolveTemplate(doc *ast.Document, ws *workspace.Workspace) (*ast.Document,
 		}
 	}
 
-	if !tmpl.IsTemplate {
-		return nil, &ast.Diagnostic{
-			Severity: ast.SeverityError,
-			Code:     "E073",
-			Message:  fmt.Sprintf("cannot extend non-template document: %s", doc.ExtendsName),
-		}
-	}
-
 	return tmpl, nil
 }
 
@@ -158,31 +150,31 @@ func InheritVariables(child, tmpl *ast.Document) []ast.Variable {
 // MergeHeadings merges template headings with child headings.
 // Child headings override template headings. Template @default headings
 // are used when child doesn't provide them.
+// H1 is skipped (document title) — merge operates on H1's children.
 func MergeHeadings(child, tmpl *ast.Document) []*ast.Heading {
-	var result []*ast.Heading
-
-	for _, th := range tmpl.Headings {
-		ch := findMatchingHeading(child.Headings, th)
-		if ch != nil {
-			// child provides this heading — use child's version
-			merged := *ch
-			merged.Children = mergeChildHeadings(ch.Children, th.Children)
-			result = append(result, &merged)
-		} else if th.Annotation == ast.AnnotationDefault {
-			// template default — use template's version
-			result = append(result, th)
-		}
-		// if required and missing, ValidateContract already reported E070
+	// Get template H1's children (skip H1 title)
+	tmplChildren := tmpl.Headings
+	if len(tmpl.Headings) > 0 && tmpl.Headings[0].Level == 1 {
+		tmplChildren = tmpl.Headings[0].Children
 	}
 
-	// add any child headings not in template (extra sections)
-	for _, ch := range child.Headings {
-		if findMatchingHeading(tmpl.Headings, ch) == nil {
-			result = append(result, ch)
-		}
+	// Get child H1's children
+	childChildren := child.Headings
+	var childH1 *ast.Heading
+	if len(child.Headings) > 0 && child.Headings[0].Level == 1 {
+		childH1 = child.Headings[0]
+		childChildren = childH1.Children
 	}
 
-	return result
+	merged := mergeChildHeadings(childChildren, tmplChildren)
+
+	// Reconstruct with child's H1
+	if childH1 != nil {
+		h1Copy := *childH1
+		h1Copy.Children = merged
+		return []*ast.Heading{&h1Copy}
+	}
+	return merged
 }
 
 func mergeChildHeadings(childHeadings, tmplHeadings []*ast.Heading) []*ast.Heading {

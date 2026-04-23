@@ -452,37 +452,55 @@ func TestMergeHeadings_ChildOverrides(t *testing.T) {
 // TestMergeHeadings_DefaultUsed verifies that a @default template heading is used when the child does not provide it.
 func TestMergeHeadings_DefaultUsed(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Appendix", "appendix", "", ast.AnnotationDefault),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Appendix", "appendix", "", ast.AnnotationDefault),
+		),
 	})
-	child := &ast.Document{Headings: nil}
+	child := &ast.Document{
+		Headings: []*ast.Heading{
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired),
+		},
+	}
 
 	result := MergeHeadings(child, tmpl)
 	if len(result) != 1 {
-		t.Fatalf("expected 1 heading (from template default), got %d", len(result))
+		t.Fatalf("expected 1 top-level heading, got %d", len(result))
 	}
-	if result[0].Text != "Appendix" {
-		t.Fatalf("expected 'Appendix', got %q", result[0].Text)
+	children := result[0].Children
+	if len(children) != 1 {
+		t.Fatalf("expected 1 child heading (from template default), got %d", len(children))
+	}
+	if children[0].Text != "Appendix" {
+		t.Fatalf("expected 'Appendix', got %q", children[0].Text)
 	}
 }
 
 // TestMergeHeadings_ExtraChildHeading verifies that child headings not in the template are appended to the result.
 func TestMergeHeadings_ExtraChildHeading(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Intro", "intro", "", ast.AnnotationRequired),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Intro", "intro", "", ast.AnnotationRequired),
+		),
 	})
 	child := &ast.Document{
 		Headings: []*ast.Heading{
-			h(1, "Intro", "intro", "", ast.AnnotationRequired),
-			h(1, "Extra", "extra", "", ast.AnnotationRequired),
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired,
+				h(2, "Intro", "intro", "", ast.AnnotationRequired),
+				h(2, "Extra", "extra", "", ast.AnnotationRequired),
+			),
 		},
 	}
 
 	result := MergeHeadings(child, tmpl)
-	if len(result) != 2 {
-		t.Fatalf("expected 2 headings, got %d", len(result))
+	if len(result) != 1 {
+		t.Fatalf("expected 1 top-level heading, got %d", len(result))
 	}
-	if result[1].Text != "Extra" {
-		t.Fatalf("expected 'Extra' appended, got %q", result[1].Text)
+	children := result[0].Children
+	if len(children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(children))
+	}
+	if children[1].Text != "Extra" {
+		t.Fatalf("expected 'Extra' appended, got %q", children[1].Text)
 	}
 }
 
@@ -531,13 +549,23 @@ func TestMergeHeadings_EmptyTemplate(t *testing.T) {
 // TestMergeHeadings_EmptyChild verifies that merging an empty child with a template returns default headings only.
 func TestMergeHeadings_EmptyChild(t *testing.T) {
 	tmpl := makeTemplate("base", "base.md", []*ast.Heading{
-		h(1, "Default", "default", "", ast.AnnotationDefault),
+		h(1, "Template", "template", "", ast.AnnotationRequired,
+			h(2, "Default", "default", "", ast.AnnotationDefault),
+		),
 	})
-	child := &ast.Document{Headings: nil}
+	child := &ast.Document{
+		Headings: []*ast.Heading{
+			h(1, "My Doc", "my-doc", "", ast.AnnotationRequired),
+		},
+	}
 
 	result := MergeHeadings(child, tmpl)
 	if len(result) != 1 {
-		t.Fatalf("expected 1 heading (from default), got %d", len(result))
+		t.Fatalf("expected 1 top-level heading, got %d", len(result))
+	}
+	children := result[0].Children
+	if len(children) != 1 {
+		t.Fatalf("expected 1 child heading (from default), got %d", len(children))
 	}
 }
 

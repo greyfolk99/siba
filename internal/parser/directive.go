@@ -15,16 +15,15 @@ func ParseDirectives(source string) []ast.Directive {
 	var directives []ast.Directive
 	lines := strings.Split(source, "\n")
 
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
+	for i := 0; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
 		matches := directiveRe.FindStringSubmatch(trimmed)
 		if matches == nil {
 			// handle multi-line directives (e.g., @const with arrays/objects)
-			// check if line starts a directive that spans multiple lines
 			if strings.Contains(trimmed, "<!--") && strings.Contains(trimmed, "@") && !strings.Contains(trimmed, "-->") {
-				// collect until -->
 				full := trimmed
-				for j := i + 1; j < len(lines); j++ {
+				j := i + 1
+				for ; j < len(lines); j++ {
 					full += "\n" + lines[j]
 					if strings.Contains(lines[j], "-->") {
 						break
@@ -40,6 +39,7 @@ func ParseDirectives(source string) []ast.Directive {
 						Position: ast.Position{Line: i + 1, Column: 1},
 					})
 				}
+				i = j // skip consumed lines
 			}
 			continue
 		}
