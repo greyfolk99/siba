@@ -312,8 +312,9 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 		}
 		defer ip.ctx.Leave(varKey)
 
-		// local variable
-		if v, ok := currentScope.Resolve(inner); ok && v.Value != nil {
+		// local variable (with TDZ — declared line must be before reference)
+		lineNo := ip.pos + 1
+		if v, ok := currentScope.ResolveAt(inner, lineNo); ok && v.Value != nil {
 			return ast.ValueToString(*v.Value)
 		}
 
@@ -321,7 +322,7 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 		if dotIdx := strings.LastIndex(inner, "."); dotIdx >= 0 {
 			objName := inner[:dotIdx]
 			propName := inner[dotIdx+1:]
-			if v, ok := currentScope.Resolve(objName); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
+			if v, ok := currentScope.ResolveAt(objName, lineNo); ok && v.Value != nil && v.Value.Kind == ast.TypeObject {
 				if prop, ok := v.Value.Object[propName]; ok {
 					return ast.ValueToString(prop)
 				}

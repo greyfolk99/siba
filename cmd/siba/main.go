@@ -45,7 +45,7 @@ func argsWithout(start int, flags ...string) []string {
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		os.Exit(2)
 	}
 
 	jsonMode := hasFlag("--json")
@@ -58,7 +58,7 @@ func main() {
 	case "cat":
 		if len(args) == 0 {
 			fmt.Fprintln(os.Stderr, "usage: siba cat <file.md[#symbol]>")
-			os.Exit(1)
+			os.Exit(2)
 		}
 		runCat(args[0], rawMode)
 	case "head":
@@ -73,7 +73,7 @@ func main() {
 		}
 		if file == "" {
 			fmt.Fprintln(os.Stderr, "usage: siba head [-n N] <file.md[#symbol]>")
-			os.Exit(1)
+			os.Exit(2)
 		}
 		runHead(file, n, rawMode)
 	case "tail":
@@ -88,7 +88,7 @@ func main() {
 		}
 		if file == "" {
 			fmt.Fprintln(os.Stderr, "usage: siba tail [-n N] <file.md[#symbol]>")
-			os.Exit(1)
+			os.Exit(2)
 		}
 		runTail(file, n, rawMode)
 
@@ -116,7 +116,7 @@ func main() {
 		variableMode := hasFlag("--variable")
 		if len(findArgs) == 0 {
 			fmt.Fprintln(os.Stderr, "usage: siba find [--heading|--variable] <query>")
-			os.Exit(1)
+			os.Exit(2)
 		}
 		runFind(findArgs[0], headingMode, variableMode, jsonMode)
 
@@ -137,7 +137,7 @@ func main() {
 	case "get":
 		if len(args) < 1 {
 			fmt.Fprintln(os.Stderr, "usage: siba get <package-url> [version]")
-			os.Exit(1)
+			os.Exit(2)
 		}
 		version := "main"
 		if len(args) >= 2 {
@@ -149,7 +149,7 @@ func main() {
 	case "run":
 		if len(args) < 1 {
 			fmt.Fprintln(os.Stderr, "usage: siba run <script-name>")
-			os.Exit(1)
+			os.Exit(2)
 		}
 		runScript(args[0])
 	case "help":
@@ -162,7 +162,7 @@ func main() {
 		fmt.Println("siba v0.2.0")
 	default:
 		printUsage()
-		os.Exit(1)
+		os.Exit(2)
 	}
 }
 
@@ -289,10 +289,25 @@ type JSONGraphEdge struct {
 	Type   string `json:"type"` // "extends", "ref", "variable"
 }
 
+// JSONEnvelope is the common JSON output wrapper
+type JSONEnvelope struct {
+	OK     bool        `json:"ok"`
+	Data   interface{} `json:"data"`
+	Errors interface{} `json:"errors"`
+}
+
 func writeJSON(v interface{}) {
+	env := JSONEnvelope{OK: true, Data: v, Errors: []interface{}{}}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	enc.Encode(v)
+	enc.Encode(env)
+}
+
+func writeJSONError(v interface{}, errors interface{}) {
+	env := JSONEnvelope{OK: false, Data: v, Errors: errors}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.Encode(env)
 }
 
 func runInit() {
