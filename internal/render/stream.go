@@ -39,6 +39,8 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 		if tmplDoc != nil {
 			doc.Variables = template.InheritVariables(doc, tmplDoc)
 			doc.Headings = template.MergeHeadings(doc, tmplDoc)
+			// Inject @default section content into source
+			doc.Source = injectDefaultSections(doc.Source, tmplDoc)
 		}
 	}
 
@@ -384,6 +386,59 @@ func resolveImportForRender(importPath string, ws *workspace.Workspace) *ast.Doc
 		return doc
 	}
 	return nil
+}
+
+// injectDefaultSections appends @default heading content from template
+// for headings that exist in template but not in child source.
+func injectDefaultSections(childSource string, tmplDoc *ast.Document) string {
+	childLines := strings.Split(childSource, "\n")
+	tmplLines := strings.Split(tmplDoc.Source, "\n")
+
+	// Get template H1 children (skip H1 title)
+	tmplHeadings := tmplDoc.Headings
+	if len(tmplHeadings) > 0 && tmplHeadings[0].Level == 1 {
+		tmplHeadings = tmplHeadings[0].Children
+	}
+
+	// Find @default headings in template that are missing in child
+	for _, th := range tmplHeadings {
+		if th.Annotation != ast.AnnotationDefault {
+			continue
+		}
+		// Check if child has this heading
+		found := false
+		for _, line := range childLines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				slug := parser.GenerateSlug(strings.TrimLeft(trimmed, "# "))
+				if slug == th.Slug || strings.TrimLeft(trimmed, "# ") == th.Text {
+					found = true
+					break
+				}
+			}
+		}
+		if found {
+			continue
+		}
+
+		// Extract template section content and append
+		start := th.Position.Line - 1
+		end := th.Content.End.Line
+		if end <= 0 || end > len(tmplLines) {
+			end = len(tmplLines)
+		}
+		if start < len(tmplLines) {
+			var section []string
+			for _, l := range tmplLines[start:end] {
+				if !parser.IsDirectiveLine(l) {
+					section = append(section, l)
+				}
+			}
+			childSource += "\n" + strings.Join(section, "\n")
+		}
+	}
+
+	return childSource
 }
 
 var directiveCheckRe = refDirectiveRe
