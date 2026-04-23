@@ -190,7 +190,6 @@ func (ip *interpreter) handleFor(args string) error {
 
 // processUntilEnd processes and outputs lines until @end{keyword}
 func (ip *interpreter) processUntilEnd(endKeyword string) error {
-	depth := 1
 	for ip.pos < len(ip.lines) {
 		line := ip.lines[ip.pos]
 		trimmed := strings.TrimSpace(line)
@@ -199,31 +198,29 @@ func (ip *interpreter) processUntilEnd(endKeyword string) error {
 			matches := directiveCheckRe.FindStringSubmatch(trimmed)
 			if matches != nil {
 				kw := matches[1]
-				if kw == "if" || kw == "for" {
-					depth++
-				}
+
+				// Found our closing directive
 				if kw == endKeyword {
-					depth--
-					if depth == 0 {
-						return nil
-					}
+					return nil
 				}
-				// handle nested @if/@for
+
+				// Nested control block — recurse (handles its own @end)
 				if kw == "if" {
 					if err := ip.handleIf(matches[2]); err != nil {
 						return err
 					}
-					ip.pos++
+					ip.pos++ // skip past @endif
 					continue
 				}
 				if kw == "for" {
 					if err := ip.handleFor(matches[2]); err != nil {
 						return err
 					}
-					ip.pos++
+					ip.pos++ // skip past @endfor
 					continue
 				}
 			}
+			// Other directives — strip
 			ip.pos++
 			continue
 		}

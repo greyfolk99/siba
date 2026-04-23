@@ -219,14 +219,23 @@ func substituteVariables(content string, rootScope *scope.Scope, doc *ast.Docume
 						return value
 					}
 				}
-				// cross-document variable: {{doc-name.variable}}
-				if ws != nil {
-					if targetDoc := ws.GetDocument(objName); targetDoc != nil {
-						for _, tv := range targetDoc.Variables {
-							if tv.Name == propName && tv.Access == ast.AccessDefault && tv.Value != nil {
-								value := ast.ValueToString(*tv.Value)
-								ctx.Cache(varKey, value)
-								return value
+				// @import alias.variable — module-level variable
+				if ws != nil && doc != nil {
+					for _, imp := range doc.Imports {
+						if imp.Alias == objName {
+							clean := strings.TrimPrefix(imp.Path, "./")
+							targetDoc := ws.GetDocumentByPath(clean)
+							if targetDoc == nil {
+								targetDoc = ws.GetDocumentByPath(clean + ".md")
+							}
+							if targetDoc != nil {
+								for _, tv := range targetDoc.Variables {
+									if tv.Name == propName && tv.Access != ast.AccessPrivate && tv.Value != nil {
+										value := ast.ValueToString(*tv.Value)
+										ctx.Cache(varKey, value)
+										return value
+									}
+								}
 							}
 						}
 					}
