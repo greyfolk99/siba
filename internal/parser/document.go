@@ -102,6 +102,11 @@ func ParseDocument(path string, source string) *ast.Document {
 		doc.Diagnostics = append(doc.Diagnostics, *diag)
 	}
 
+	// Validate @import comes before @doc/@template
+	if diag := validateImportOrder(doc.Directives); diag != nil {
+		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
+
 	// @template without name is an error
 	if doc.IsTemplate && doc.Name == "" {
 		doc.Diagnostics = append(doc.Diagnostics, ast.Diagnostic{
@@ -181,6 +186,24 @@ func extractImports(directives []ast.Directive) []ast.Import {
 		})
 	}
 	return imports
+}
+
+func validateImportOrder(directives []ast.Directive) *ast.Diagnostic {
+	docTemplateSeen := false
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveDoc || d.Kind == ast.DirectiveTemplate {
+			docTemplateSeen = true
+		}
+		if d.Kind == ast.DirectiveImport && docTemplateSeen {
+			return &ast.Diagnostic{
+				Severity: ast.SeverityError,
+				Code:     "E004",
+				Message:  "@import must come before @doc/@template",
+				Range:    ast.Range{Start: d.Position, End: d.Position},
+			}
+		}
+	}
+	return nil
 }
 
 func validateDocTemplateExclusive(directives []ast.Directive) *ast.Diagnostic {
