@@ -1,5 +1,5 @@
-<!-- @doc webapp-spec -->
 <!-- @import tmpl from ./project-tmpl.md -->
+<!-- @doc webapp-spec -->
 <!-- @extends tmpl#project -->
 <!-- @const project-name = "WebApp" -->
 <!-- @let status = "active" -->
