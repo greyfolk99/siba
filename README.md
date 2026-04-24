@@ -24,19 +24,24 @@ go build -o siba ./cmd/siba
 # Initialize a project
 siba init
 
-# Check a document
-siba check docs/my-doc.md
+# Read (streaming render)
+siba cat docs/my-doc.md              # render to stdout
+siba cat docs/my-doc.md#section      # specific section
+siba cat --raw docs/my-doc.md        # raw source (no render)
+siba head -n 5 docs/my-doc.md       # first 5 lines
+siba tail -n 3 docs/my-doc.md       # last 3 lines
 
-# Render a single file to stdout
-siba render docs/my-doc.md
+# Search (no render, index only)
+siba ls                              # list all docs/templates
+siba ls docs/my-doc.md               # list symbols in file
+siba tree docs/my-doc.md             # heading tree
+siba tree --deps                     # dependency tree
+siba find "keyword"                  # search workspace
 
-# Render entire workspace to _render/{version}/
-siba render
-
-# JSON output (for tooling integration)
-siba check --json docs/my-doc.md
-siba check --json          # workspace-wide
-siba render --json docs/my-doc.md
+# Build
+siba export                          # export to _export/{version}/
+siba check docs/my-doc.md            # validate
+siba check --json                    # JSON output (wrapped in {ok, data, errors})
 ```
 
 ## Concepts
@@ -160,8 +165,8 @@ version = "1.0.0"
 "github.com/hjseo/architecture-templates" = "v1.2.0"
 
 [scripts]
-prerender = "echo starting"
-postrender = "deploy.sh"
+preexport = "echo starting"
+postexport = "deploy.sh"
 ```
 
 ```bash
