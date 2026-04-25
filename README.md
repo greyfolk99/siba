@@ -7,7 +7,7 @@ A module system for markdown documents. Headings are structure, HTML comments ar
 ## Install
 
 ```bash
-go install github.com/hjseo/siba/cmd/siba@latest
+go install github.com/greyfolk99/siba/cmd/siba@latest
 ```
 
 Or build from source:
