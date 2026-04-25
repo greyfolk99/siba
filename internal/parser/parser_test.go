@@ -6,7 +6,7 @@ package parser
 import (
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/ast"
 )
 
 // TestParseDirectives verifies that ParseDirectives correctly extracts all directive kinds

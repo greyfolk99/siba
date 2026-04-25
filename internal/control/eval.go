@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/parser"
-	"github.com/hjseo/siba/internal/scope"
-	"github.com/hjseo/siba/internal/types"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/parser"
+	"github.com/greyfolk99/siba/internal/scope"
+	"github.com/greyfolk99/siba/internal/types"
 )
 
 // EvaluateIf evaluates an @if condition against the given scope

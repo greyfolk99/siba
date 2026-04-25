@@ -5,7 +5,7 @@ package types
 import (
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/ast"
 )
 
 // TestCheckAssignment_Match verifies that assigning a value whose type matches the variable's declared type produces no diagnostic.

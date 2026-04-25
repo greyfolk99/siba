@@ -1,4 +1,4 @@
-module github.com/hjseo/siba
+module github.com/greyfolk99/siba
 
 go 1.25.0
 

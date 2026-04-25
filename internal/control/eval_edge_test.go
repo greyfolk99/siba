@@ -7,9 +7,9 @@ package control
 import (
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/scope"
-	"github.com/hjseo/siba/internal/types"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/scope"
+	"github.com/greyfolk99/siba/internal/types"
 )
 
 // --- Edge case tests from review ---

@@ -7,8 +7,8 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/parser"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/parser"
 )
 
 // ModuleConfig represents module.toml
@@ -89,9 +89,9 @@ func DiscoverDocuments(root string) []string {
 		if err != nil {
 			return nil
 		}
-		// skip hidden dirs, _export, node_modules
+		// skip hidden dirs, _export, node_modules (but never skip the root itself)
 		name := info.Name()
-		if info.IsDir() && (strings.HasPrefix(name, ".") || name == "_export" || name == "node_modules") {
+		if info.IsDir() && path != root && (strings.HasPrefix(name, ".") || name == "_export" || name == "node_modules") {
 			return filepath.SkipDir
 		}
 		if !info.IsDir() && strings.HasSuffix(name, ".md") {

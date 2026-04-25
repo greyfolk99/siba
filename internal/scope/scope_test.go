@@ -5,7 +5,7 @@ package scope
 import (
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/ast"
 )
 
 // TestBuildScopeTree_RootVariable verifies that a variable declared before any heading is placed in the root scope and is resolvable from child scopes.

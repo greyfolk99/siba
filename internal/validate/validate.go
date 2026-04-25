@@ -3,11 +3,11 @@ package validate
 import (
 	"sort"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/refs"
-	"github.com/hjseo/siba/internal/scope"
-	"github.com/hjseo/siba/internal/template"
-	"github.com/hjseo/siba/internal/workspace"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/refs"
+	"github.com/greyfolk99/siba/internal/scope"
+	"github.com/greyfolk99/siba/internal/template"
+	"github.com/greyfolk99/siba/internal/workspace"
 )
 
 // ValidateDocument runs all validation passes on a single document.

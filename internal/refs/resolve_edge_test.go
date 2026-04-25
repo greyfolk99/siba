@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/scope"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/scope"
 )
 
 // --- Edge case tests from Codex review ---

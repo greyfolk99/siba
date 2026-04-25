@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hjseo/siba/internal/workspace"
+	"github.com/greyfolk99/siba/internal/workspace"
 )
 
 // CacheDir returns the global siba cache directory

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hjseo/siba/internal/parser"
+	"github.com/greyfolk99/siba/internal/parser"
 )
 
 // TestBasicVariableSubstitution verifies that {{var}} references are replaced

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/hjseo/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/ast"
 )
 
 var headingRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)

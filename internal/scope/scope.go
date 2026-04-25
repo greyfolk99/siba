@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hjseo/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/ast"
 )
 
 // ScopeKind distinguishes heading scopes from control block scopes

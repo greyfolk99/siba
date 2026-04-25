@@ -7,8 +7,8 @@ package control
 import (
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/scope"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/scope"
 )
 
 func makeScope(vars map[string]ast.Variable) *scope.Scope {

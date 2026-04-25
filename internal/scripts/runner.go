@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/hjseo/siba/internal/workspace"
+	"github.com/greyfolk99/siba/internal/workspace"
 )
 
 // RunScript runs a named script from [scripts] section

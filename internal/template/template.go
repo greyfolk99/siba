@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/workspace"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/workspace"
 )
 
 // ResolveTemplate finds the template for a document that uses @extends.

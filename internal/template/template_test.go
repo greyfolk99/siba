@@ -5,8 +5,8 @@ package template
 import (
 	"testing"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/workspace"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/workspace"
 )
 
 // --- helpers ---

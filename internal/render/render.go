@@ -8,12 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/control"
-	"github.com/hjseo/siba/internal/parser"
-	"github.com/hjseo/siba/internal/scope"
-	"github.com/hjseo/siba/internal/template"
-	"github.com/hjseo/siba/internal/workspace"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/control"
+	"github.com/greyfolk99/siba/internal/parser"
+	"github.com/greyfolk99/siba/internal/scope"
+	"github.com/greyfolk99/siba/internal/template"
+	"github.com/greyfolk99/siba/internal/workspace"
 )
 
 const escapePlaceholder = "\x00SIBA_ESCAPE\x00"

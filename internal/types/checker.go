@@ -3,8 +3,8 @@ package types
 import (
 	"fmt"
 
-	"github.com/hjseo/siba/internal/ast"
-	"github.com/hjseo/siba/internal/parser"
+	"github.com/greyfolk99/siba/internal/ast"
+	"github.com/greyfolk99/siba/internal/parser"
 )
 
 // CheckAssignment validates that a value matches the variable's declared type
