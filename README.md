@@ -187,7 +187,7 @@ SIBA detects circular references at runtime using a Nix-style evaluating marker 
 ## Project Structure
 
 ```
-internal/
+pkg/
   ast/        AST definitions (Document, Heading, Variable, Reference, TypeExpr)
   parser/     Directive, heading, document, value parsers
   scope/      Scope chain (heading-based, variable resolution)
