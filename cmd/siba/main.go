@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/greyfolk99/siba/internal/ast"
-	"github.com/greyfolk99/siba/internal/parser"
-	"github.com/greyfolk99/siba/internal/pkg"
-	"github.com/greyfolk99/siba/internal/render"
-	"github.com/greyfolk99/siba/internal/scripts"
-	"github.com/greyfolk99/siba/internal/validate"
-	"github.com/greyfolk99/siba/internal/workspace"
+	"github.com/greyfolk99/siba/pkg/ast"
+	"github.com/greyfolk99/siba/pkg/parser"
+	"github.com/greyfolk99/siba/pkg/pkg"
+	"github.com/greyfolk99/siba/pkg/render"
+	"github.com/greyfolk99/siba/pkg/scripts"
+	"github.com/greyfolk99/siba/pkg/validate"
+	"github.com/greyfolk99/siba/pkg/workspace"
 )
 
 // hasFlag checks if a flag is present in os.Args

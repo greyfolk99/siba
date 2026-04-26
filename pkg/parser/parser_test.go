@@ -1,0 +1,410 @@
+// Package parser provides tests for the siba markdown directive parser,
+// covering directive extraction, heading tree construction, slug generation,
+// full document parsing, control block handling, and diagnostic validation.
+package parser
+
+import (
+	"testing"
+
+	"github.com/greyfolk99/siba/pkg/ast"
+)
+
+// TestParseDirectives verifies that ParseDirectives correctly extracts all directive kinds
+// (@doc, @const, @let, @default) and their arguments from raw markdown source.
+func TestParseDirectives(t *testing.T) {
+	source := `<!-- @doc test-doc -->
+<!-- @const name = "hello" -->
+<!-- @let count = 42 -->
+# Heading
+some text
+<!-- @default -->
+## Sub Heading`
+
+	directives := ParseDirectives(source)
+
+	if len(directives) != 4 {
+		t.Fatalf("expected 4 directives, got %d", len(directives))
+	}
+
+	tests := []struct {
+		kind ast.DirectiveKind
+		args string
+	}{
+		{ast.DirectiveDoc, "test-doc"},
+		{ast.DirectiveConst, `name = "hello"`},
+		{ast.DirectiveLet, "count = 42"},
+		{ast.DirectiveDefault, ""},
+	}
+
+	for i, tt := range tests {
+		if directives[i].Kind != tt.kind {
+			t.Errorf("directive %d: expected kind %d, got %d", i, tt.kind, directives[i].Kind)
+		}
+		if directives[i].Args != tt.args {
+			t.Errorf("directive %d: expected args %q, got %q", i, tt.args, directives[i].Args)
+		}
+	}
+}
+
+// TestParseHeadings verifies that headings are parsed and assembled into a correct
+// parent-child tree structure via BuildHeadingTree.
+func TestParseHeadings(t *testing.T) {
+	source := `# Top
+## Section A
+### Detail A1
+### Detail A2
+## Section B`
+
+	headings := ParseHeadings(source)
+	if len(headings) != 5 {
+		t.Fatalf("expected 5 headings, got %d", len(headings))
+	}
+
+	tree := BuildHeadingTree(headings)
+	if len(tree) != 1 {
+		t.Fatalf("expected 1 root heading, got %d", len(tree))
+	}
+
+	root := tree[0]
+	if root.Text != "Top" {
+		t.Errorf("expected root text 'Top', got %q", root.Text)
+	}
+	if len(root.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(root.Children))
+	}
+	if root.Children[0].Text != "Section A" {
+		t.Errorf("expected child 0 'Section A', got %q", root.Children[0].Text)
+	}
+	if len(root.Children[0].Children) != 2 {
+		t.Fatalf("expected Section A to have 2 children, got %d", len(root.Children[0].Children))
+	}
+	if root.Children[1].Text != "Section B" {
+		t.Errorf("expected child 1 'Section B', got %q", root.Children[1].Text)
+	}
+}
+
+// TestGenerateSlug verifies that GenerateSlug lowercases text, strips special characters,
+// and joins words with hyphens to produce URL-safe slugs.
+func TestGenerateSlug(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Hello World", "hello-world"},
+		{"Authentication & Authorization", "authentication-authorization"},
+		{"API 명세", "api-명세"},
+		{"Create Payment", "create-payment"},
+	}
+
+	for _, tt := range tests {
+		got := GenerateSlug(tt.input)
+		if got != tt.expected {
+			t.Errorf("GenerateSlug(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+// TestParseDocument verifies that ParseDocument produces a complete Document with the
+// correct name, variables, template references, heading tree, and zero diagnostics.
+func TestParseDocument(t *testing.T) {
+	source := `<!-- @doc payment-api -->
+<!-- @const service-name = "payment-api" -->
+<!-- @const version = "2.1.0" -->
+
+# Payment API
+
+이 문서는 {{service-name}} v{{version}} 의 API 명세입니다.
+
+## Endpoints
+
+### Authentication
+<!-- @let auth-type = "Bearer" -->
+
+## Error Handling
+`
+
+	doc := ParseDocument("test.md", source)
+
+	if doc.Name != "payment-api" {
+		t.Errorf("expected doc name 'payment-api', got %q", doc.Name)
+	}
+	if len(doc.Variables) != 3 {
+		t.Errorf("expected 3 variables, got %d", len(doc.Variables))
+	}
+	if len(doc.References) != 2 {
+		t.Errorf("expected 2 references, got %d", len(doc.References))
+	}
+	if len(doc.Headings) != 1 {
+		t.Fatalf("expected 1 root heading, got %d", len(doc.Headings))
+	}
+	if len(doc.Diagnostics) != 0 {
+		t.Errorf("expected no diagnostics, got %d", len(doc.Diagnostics))
+	}
+}
+
+// TestControlBlocks verifies that @if/@endif and @for/@endfor control blocks are
+// parsed with the correct kind, condition, iterator, and collection fields.
+func TestControlBlocks(t *testing.T) {
+	source := `<!-- @if env == "production" -->
+## Prod Config
+<!-- @endif -->
+
+<!-- @for item in items -->
+### {{item.name}}
+<!-- @endfor -->`
+
+	doc := ParseDocument("test.md", source)
+
+	if len(doc.ControlBlocks) != 2 {
+		t.Fatalf("expected 2 control blocks, got %d", len(doc.ControlBlocks))
+	}
+	if doc.ControlBlocks[0].Kind != ast.DirectiveIf {
+		t.Errorf("expected first block to be @if")
+	}
+	if doc.ControlBlocks[0].Condition != `env == "production"` {
+		t.Errorf("expected condition 'env == \"production\"', got %q", doc.ControlBlocks[0].Condition)
+	}
+	if doc.ControlBlocks[1].Kind != ast.DirectiveFor {
+		t.Errorf("expected second block to be @for")
+	}
+	if doc.ControlBlocks[1].Iterator != "item" {
+		t.Errorf("expected iterator 'item', got %q", doc.ControlBlocks[1].Iterator)
+	}
+	if doc.ControlBlocks[1].Collection != "items" {
+		t.Errorf("expected collection 'items', got %q", doc.ControlBlocks[1].Collection)
+	}
+}
+
+// TestUnmatchedControlBlocks verifies that an unclosed @if block without a matching
+// @endif produces an E012 diagnostic.
+func TestUnmatchedControlBlocks(t *testing.T) {
+	source := `<!-- @if env == "production" -->
+## Prod Config
+`
+	doc := ParseDocument("test.md", source)
+
+	if len(doc.Diagnostics) == 0 {
+		t.Fatal("expected diagnostics for unclosed @if")
+	}
+	found := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E012" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected E012 diagnostic for unclosed @if")
+	}
+}
+
+// TestDocTemplateExclusive verifies that using both @doc and @template in the same
+// file produces an E001 diagnostic, since they are mutually exclusive.
+func TestDocTemplateExclusive(t *testing.T) {
+	source := `<!-- @doc my-doc -->
+<!-- @template my-tmpl -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E001" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected E001 diagnostic for @doc + @template")
+	}
+}
+
+// TestTemplateRequiresName verifies that a @template directive without a name argument
+// produces an E002 diagnostic.
+func TestTemplateRequiresName(t *testing.T) {
+	source := `<!-- @template -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E002" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected E002 diagnostic for @template without name")
+	}
+}
+
+// TestTemplateWithName verifies that a valid @template directive with a name sets
+// the document Name and IsTemplate fields correctly without producing diagnostics.
+func TestTemplateWithName(t *testing.T) {
+	source := `<!-- @template api-spec -->
+# API Spec
+## Endpoints
+## Error Handling`
+
+	doc := ParseDocument("tmpl.md", source)
+
+	if doc.Name != "api-spec" {
+		t.Errorf("expected Name='api-spec', got %q", doc.Name)
+	}
+	if !doc.IsTemplate {
+		t.Error("expected IsTemplate=true")
+	}
+	if len(doc.Diagnostics) > 0 {
+		t.Errorf("expected no diagnostics, got %v", doc.Diagnostics)
+	}
+}
+
+// TestParseImport verifies that an @import directive with "alias from path" syntax
+// is correctly parsed into an Import with the expected alias and path fields.
+func TestParseImport(t *testing.T) {
+	source := `<!-- @import utils from ./shared/utils -->
+# Main`
+
+	doc := ParseDocument("test.md", source)
+
+	if len(doc.Imports) != 1 {
+		t.Fatalf("expected 1 import, got %d", len(doc.Imports))
+	}
+	imp := doc.Imports[0]
+	if imp.Alias != "utils" {
+		t.Errorf("expected alias 'utils', got %q", imp.Alias)
+	}
+	if imp.Path != "./shared/utils" {
+		t.Errorf("expected path './shared/utils', got %q", imp.Path)
+	}
+}
+
+// TestMultilineConst verifies that a @const directive spanning multiple lines
+// (e.g., an array literal split across lines inside <!-- ... -->) is parsed
+// into a single variable with the correct array value.
+func TestMultilineConst(t *testing.T) {
+	source := `<!-- @const items = [
+  "alpha",
+  "beta",
+  "gamma"
+] -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	var found *ast.Variable
+	for i := range doc.Variables {
+		if doc.Variables[i].Name == "items" {
+			found = &doc.Variables[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected variable 'items' to be parsed")
+	}
+	if found.Value == nil {
+		t.Fatal("expected 'items' to have a value")
+	}
+	if found.Value.Kind != ast.TypeArray {
+		t.Errorf("expected array type, got %d", found.Value.Kind)
+	}
+	if len(found.Value.Array) != 3 {
+		t.Errorf("expected 3 elements, got %d", len(found.Value.Array))
+	}
+}
+
+// TestParsePrivateConst verifies that a @const directive with the "private"
+// access modifier sets the variable's Access field to AccessPrivate.
+func TestParsePrivateConst(t *testing.T) {
+	source := `<!-- @const private secret = "hidden" -->
+# Test`
+
+	doc := ParseDocument("test.md", source)
+
+	var found *ast.Variable
+	for i := range doc.Variables {
+		if doc.Variables[i].Name == "secret" {
+			found = &doc.Variables[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected variable 'secret' to be parsed")
+	}
+	if found.Access != ast.AccessPrivate {
+		t.Errorf("expected AccessPrivate, got %d", found.Access)
+	}
+	if found.Value == nil || found.Value.Str != "hidden" {
+		t.Errorf("expected value 'hidden', got %v", found.Value)
+	}
+}
+
+// TestParseHashRef verifies that a {{#section}} reference is parsed with an
+// empty PathPart and the section name in the Section field.
+func TestParseHashRef(t *testing.T) {
+	source := `# Main
+Content with {{#section}} reference`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, ref := range doc.References {
+		if ref.Section == "section" && ref.PathPart == "" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a reference with Section='section' and empty PathPart, got refs: %+v", doc.References)
+	}
+}
+
+// TestParseAliasHashRef verifies that a {{alias#symbol}} reference is parsed
+// with the alias in PathPart and the symbol in the Section field.
+func TestParseAliasHashRef(t *testing.T) {
+	source := `<!-- @import utils from ./utils -->
+# Main
+See {{utils#helper}} for details`
+
+	doc := ParseDocument("test.md", source)
+
+	found := false
+	for _, ref := range doc.References {
+		if ref.PathPart == "utils" && ref.Section == "helper" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a reference with PathPart='utils' and Section='helper', got refs: %+v", doc.References)
+	}
+}
+
+// TestParseDocuments_Multi verifies that a single file containing multiple
+// @template declarations is split into separate Document instances, each with
+// the correct name and IsTemplate flag set.
+func TestParseDocuments_Multi(t *testing.T) {
+	source := `<!-- @template api-spec -->
+# API Spec
+## Endpoints
+
+<!-- @template error-spec -->
+# Error Spec
+## Error Codes`
+
+	docs := ParseDocuments("multi.md", source)
+
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(docs))
+	}
+	if docs[0].Name != "api-spec" {
+		t.Errorf("expected first doc name 'api-spec', got %q", docs[0].Name)
+	}
+	if !docs[0].IsTemplate {
+		t.Error("expected first doc IsTemplate=true")
+	}
+	if docs[1].Name != "error-spec" {
+		t.Errorf("expected second doc name 'error-spec', got %q", docs[1].Name)
+	}
+	if !docs[1].IsTemplate {
+		t.Error("expected second doc IsTemplate=true")
+	}
+}
