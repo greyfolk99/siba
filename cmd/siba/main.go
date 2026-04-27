@@ -858,6 +858,17 @@ func runHead(fileArg string, n int, rawMode bool) {
 
 func runTail(fileArg string, n int, rawMode bool) {
 	doc, symbol := loadAndParse(fileArg)
+	if !rawMode && symbol == "" {
+		// streaming with ring buffer
+		cwd, _ := os.Getwd()
+		ws, _ := workspace.LoadWorkspace(cwd)
+		tw := &tailWriter{limit: n}
+		render.StreamRender(doc, tw, ws)
+		for _, line := range tw.Lines() {
+			fmt.Println(line)
+		}
+		return
+	}
 	output := renderOrRaw(doc, symbol, rawMode)
 	lines := strings.Split(output, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
@@ -867,6 +878,38 @@ func runTail(fileArg string, n int, rawMode bool) {
 		lines = lines[len(lines)-n:]
 	}
 	fmt.Println(strings.Join(lines, "\n"))
+}
+
+// tailWriter collects lines in a ring buffer, keeping only the last N
+type tailWriter struct {
+	limit int
+	buf   []string
+	cur   string
+}
+
+func (tw *tailWriter) Write(p []byte) (int, error) {
+	for _, b := range p {
+		if b == '\n' {
+			tw.buf = append(tw.buf, tw.cur)
+			if len(tw.buf) > tw.limit {
+				tw.buf = tw.buf[1:]
+			}
+			tw.cur = ""
+		} else {
+			tw.cur += string(b)
+		}
+	}
+	return len(p), nil
+}
+
+func (tw *tailWriter) Lines() []string {
+	if tw.cur != "" {
+		tw.buf = append(tw.buf, tw.cur)
+		if len(tw.buf) > tw.limit {
+			tw.buf = tw.buf[1:]
+		}
+	}
+	return tw.buf
 }
 
 // lineWriter wraps an io.Writer and stops after N lines
