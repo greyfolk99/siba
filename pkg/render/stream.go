@@ -34,13 +34,15 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 	defer ctx.Leave(docKey)
 
 	// Apply template inheritance
+	var tmplDoc *ast.Document
+	var defaults []defaultSection
 	if ws != nil && doc.ExtendsName != "" {
-		tmplDoc := ws.GetTemplate(doc.ExtendsName)
+		tmplDoc, _ = template.ResolveTemplate(doc, ws)
 		if tmplDoc != nil {
+			// Build default plan BEFORE merging (uses original child headings)
+			defaults = buildDefaultPlan(doc, tmplDoc)
 			doc.Variables = template.InheritVariables(doc, tmplDoc)
 			doc.Headings = template.MergeHeadings(doc, tmplDoc)
-			// Inject @default section content into source
-			doc.Source = injectDefaultSections(doc.Source, tmplDoc)
 		}
 	}
 
@@ -56,9 +58,84 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 		ctx:       ctx,
 		ws:        ws,
 		writer:    w,
+		defaults:  defaults,
 	}
 
 	return interp.run()
+}
+
+// defaultSection represents a @default section to inject during streaming
+type defaultSection struct {
+	afterSlug string   // insert after this child heading slug
+	lines     []string // content lines to inject (directives stripped)
+	emitted   bool
+}
+
+// buildDefaultPlan creates injection plan for @default sections.
+// Only includes sections missing from child, with correct ordering info.
+func buildDefaultPlan(child, tmpl *ast.Document) []defaultSection {
+	tmplHeadings := tmpl.Headings
+	if len(tmplHeadings) > 0 && tmplHeadings[0].Level == 1 {
+		tmplHeadings = tmplHeadings[0].Children
+	}
+
+	childHeadings := child.Headings
+	if len(childHeadings) > 0 && childHeadings[0].Level == 1 {
+		childHeadings = childHeadings[0].Children
+	}
+
+	tmplLines := strings.Split(tmpl.Source, "\n")
+	var plan []defaultSection
+
+	for i, th := range tmplHeadings {
+		if th.Annotation != ast.AnnotationDefault {
+			continue
+		}
+
+		// Check if child has this heading
+		found := false
+		for _, ch := range childHeadings {
+			if ch.Slug == th.Slug || ch.Text == th.Text {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		// Extract content from template
+		start := th.Position.Line - 1
+		end := th.Content.End.Line
+		if end <= 0 || end > len(tmplLines) {
+			end = len(tmplLines)
+		}
+		var sectionLines []string
+		for _, l := range tmplLines[start:end] {
+			if !parser.IsDirectiveLine(l) {
+				sectionLines = append(sectionLines, l)
+			}
+		}
+
+		// Find preceding heading slug in template for insertion point
+		afterSlug := "" // empty = insert at start
+		for j := i - 1; j >= 0; j-- {
+			// find the nearest preceding heading that exists in child
+			for _, ch := range childHeadings {
+				if ch.Slug == tmplHeadings[j].Slug || ch.Text == tmplHeadings[j].Text {
+					afterSlug = ch.Slug
+					goto foundPrev
+				}
+			}
+		}
+	foundPrev:
+		plan = append(plan, defaultSection{
+			afterSlug: afterSlug,
+			lines:     sectionLines,
+		})
+	}
+
+	return plan
 }
 
 // interpreter is the line-by-line streaming render engine.
@@ -70,6 +147,8 @@ type interpreter struct {
 	ws        *workspace.Workspace
 	writer    io.Writer
 	pos       int // current line index (0-based)
+	defaults  []defaultSection
+	lastSlug  string // slug of the last heading we passed
 }
 
 func (ip *interpreter) run() error {
@@ -88,7 +167,6 @@ func (ip *interpreter) run() error {
 
 		// Check multi-line directive start
 		if strings.Contains(trimmed, "<!--") && strings.Contains(trimmed, "@") && !strings.Contains(trimmed, "-->") {
-			// skip multi-line directive
 			ip.pos++
 			for ip.pos < len(ip.lines) {
 				if strings.Contains(ip.lines[ip.pos], "-->") {
@@ -100,6 +178,28 @@ func (ip *interpreter) run() error {
 			continue
 		}
 
+		// If this is a heading line, track slug and check @default injections
+		if strings.HasPrefix(trimmed, "#") {
+			level := 0
+			for _, c := range trimmed {
+				if c == '#' {
+					level++
+				} else {
+					break
+				}
+			}
+			headingText := strings.TrimSpace(trimmed[level:])
+			slug := parser.GenerateSlug(headingText)
+
+			// H2+ — check for @default injections before this heading
+			if level >= 2 {
+				if err := ip.emitPendingDefaults(slug); err != nil {
+					return err
+				}
+				ip.lastSlug = slug
+			}
+		}
+
 		// Normal text line — substitute variables and write
 		lineNo := ip.pos + 1
 		currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
@@ -108,6 +208,34 @@ func (ip *interpreter) run() error {
 			return err
 		}
 		ip.pos++
+	}
+
+	// Emit any remaining @default sections at the end
+	return ip.emitPendingDefaults("")
+}
+
+// emitPendingDefaults writes @default sections that should appear before nextSlug.
+// If nextSlug is empty, emits all remaining defaults (end of file).
+func (ip *interpreter) emitPendingDefaults(nextSlug string) error {
+	for i := range ip.defaults {
+		d := &ip.defaults[i]
+		if d.emitted {
+			continue
+		}
+
+		// Emit if: this default should come after lastSlug and before nextSlug
+		// or if nextSlug is empty (end of file)
+		if d.afterSlug == ip.lastSlug || (nextSlug == "" && !d.emitted) {
+			d.emitted = true
+			if err := ip.writeLine(""); err != nil {
+				return err
+			}
+			for _, dl := range d.lines {
+				if err := ip.writeLine(dl); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -388,116 +516,6 @@ func resolveImportForRender(importPath string, ws *workspace.Workspace) *ast.Doc
 	}
 	return nil
 }
-
-// injectDefaultSections inserts @default heading content from template
-// at the correct position in child source, preserving template heading order.
-func injectDefaultSections(childSource string, tmplDoc *ast.Document) string {
-	childLines := strings.Split(childSource, "\n")
-	tmplLines := strings.Split(tmplDoc.Source, "\n")
-
-	// Get template H1 children (skip H1 title)
-	tmplHeadings := tmplDoc.Headings
-	if len(tmplHeadings) > 0 && tmplHeadings[0].Level == 1 {
-		tmplHeadings = tmplHeadings[0].Children
-	}
-
-	// Get child H1 children
-	childDoc := parser.ParseDocument("__child__", childSource)
-	childHeadings := childDoc.Headings
-	if len(childHeadings) > 0 && childHeadings[0].Level == 1 {
-		childHeadings = childHeadings[0].Children
-	}
-
-	// Build insertion plan: for each missing @default, find where to insert
-	type insertion struct {
-		afterLine int    // insert after this line (0-based)
-		content   string // section content to insert
-	}
-	var insertions []insertion
-
-	for i, th := range tmplHeadings {
-		if th.Annotation != ast.AnnotationDefault {
-			continue
-		}
-
-		// Check if child already has this heading
-		found := false
-		for _, ch := range childHeadings {
-			if ch.Slug == th.Slug || ch.Text == th.Text {
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-
-		// Extract template section content
-		start := th.Position.Line - 1
-		end := th.Content.End.Line
-		if end <= 0 || end > len(tmplLines) {
-			end = len(tmplLines)
-		}
-		if start >= len(tmplLines) {
-			continue
-		}
-		var section []string
-		for _, l := range tmplLines[start:end] {
-			if !parser.IsDirectiveLine(l) {
-				section = append(section, l)
-			}
-		}
-		sectionContent := strings.Join(section, "\n")
-
-		// Find insert position: after the previous template heading's position in child
-		insertAfter := len(childLines) - 1 // default: end of file
-
-		// Look for the preceding heading (template order) in child
-		for j := i - 1; j >= 0; j-- {
-			prevTmpl := tmplHeadings[j]
-			for _, ch := range childHeadings {
-				if ch.Slug == prevTmpl.Slug || ch.Text == prevTmpl.Text {
-					// Insert after this child heading's content
-					endLine := ch.Content.End.Line - 1
-					if endLine < 0 {
-						endLine = ch.Position.Line
-					}
-					insertAfter = endLine
-					goto foundPos
-				}
-			}
-		}
-	foundPos:
-		insertions = append(insertions, insertion{
-			afterLine: insertAfter,
-			content:   sectionContent,
-		})
-	}
-
-	if len(insertions) == 0 {
-		return childSource
-	}
-
-	// Apply insertions from bottom to top (so line numbers stay valid)
-	for i := len(insertions) - 1; i >= 0; i-- {
-		ins := insertions[i]
-		pos := ins.afterLine + 1
-		if pos > len(childLines) {
-			pos = len(childLines)
-		}
-
-		// Insert content
-		newLines := make([]string, 0, len(childLines)+10)
-		newLines = append(newLines, childLines[:pos]...)
-		newLines = append(newLines, "")
-		newLines = append(newLines, strings.Split(ins.content, "\n")...)
-		newLines = append(newLines, childLines[pos:]...)
-		childLines = newLines
-	}
-
-	return strings.Join(childLines, "\n")
-}
-
 var directiveCheckRe = refDirectiveRe
 
 func findHeadingInList(headings []*ast.Heading, nameOrSlug string) *ast.Heading {
@@ -531,3 +549,4 @@ func extractHeadingContent(source string, h *ast.Heading) string {
 	}
 	return strings.Join(result, "\n")
 }
+
