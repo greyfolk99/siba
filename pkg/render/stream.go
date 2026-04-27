@@ -71,36 +71,48 @@ type defaultSection struct {
 	emitted   bool
 }
 
+// flattenHeadings collects all headings recursively into a flat list (pre-order)
+func flattenHeadings(headings []*ast.Heading) []*ast.Heading {
+	var result []*ast.Heading
+	for _, h := range headings {
+		result = append(result, h)
+		result = append(result, flattenHeadings(h.Children)...)
+	}
+	return result
+}
+
+// headingExists checks if a heading with given slug/text exists in a flat list
+func headingExists(flat []*ast.Heading, slug, text string) bool {
+	for _, h := range flat {
+		if h.Slug == slug || h.Text == text {
+			return true
+		}
+	}
+	return false
+}
+
 // buildDefaultPlan creates injection plan for @default sections.
-// Only includes sections missing from child, with correct ordering info.
+// Recursively checks all heading levels (H2, H3, H4, ...).
 func buildDefaultPlan(child, tmpl *ast.Document) []defaultSection {
 	tmplHeadings := tmpl.Headings
 	if len(tmplHeadings) > 0 && tmplHeadings[0].Level == 1 {
 		tmplHeadings = tmplHeadings[0].Children
 	}
 
-	childHeadings := child.Headings
-	if len(childHeadings) > 0 && childHeadings[0].Level == 1 {
-		childHeadings = childHeadings[0].Children
-	}
+	// Flatten all headings for lookup
+	tmplFlat := flattenHeadings(tmplHeadings)
+	childFlat := flattenHeadings(child.Headings)
 
 	tmplLines := strings.Split(tmpl.Source, "\n")
 	var plan []defaultSection
 
-	for i, th := range tmplHeadings {
+	for i, th := range tmplFlat {
 		if th.Annotation != ast.AnnotationDefault {
 			continue
 		}
 
-		// Check if child has this heading
-		found := false
-		for _, ch := range childHeadings {
-			if ch.Slug == th.Slug || ch.Text == th.Text {
-				found = true
-				break
-			}
-		}
-		if found {
+		// Skip if child already has this heading
+		if headingExists(childFlat, th.Slug, th.Text) {
 			continue
 		}
 
@@ -117,18 +129,16 @@ func buildDefaultPlan(child, tmpl *ast.Document) []defaultSection {
 			}
 		}
 
-		// Find preceding heading slug in template for insertion point
-		afterSlug := "" // empty = insert at start
+		// Find preceding heading slug that exists in child
+		afterSlug := ""
 		for j := i - 1; j >= 0; j-- {
-			// find the nearest preceding heading that exists in child
-			for _, ch := range childHeadings {
-				if ch.Slug == tmplHeadings[j].Slug || ch.Text == tmplHeadings[j].Text {
-					afterSlug = ch.Slug
-					goto foundPrev
-				}
+			prev := tmplFlat[j]
+			if headingExists(childFlat, prev.Slug, prev.Text) {
+				afterSlug = prev.Slug
+				break
 			}
 		}
-	foundPrev:
+
 		plan = append(plan, defaultSection{
 			afterSlug: afterSlug,
 			lines:     sectionLines,
