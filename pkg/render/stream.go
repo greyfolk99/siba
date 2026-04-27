@@ -34,13 +34,13 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 	defer ctx.Leave(docKey)
 
 	// Apply template inheritance
-	var tmplDoc *ast.Document
 	var defaults []defaultSection
 	if ws != nil && doc.ExtendsName != "" {
-		tmplDoc, _ = template.ResolveTemplate(doc, ws)
+		tmplDoc, _ := template.ResolveTemplate(doc, ws)
 		if tmplDoc != nil {
+			tmplLines := strings.Split(tmplDoc.Source, "\n")
 			// Build default plan BEFORE merging (uses original child headings)
-			defaults = buildDefaultPlan(doc, tmplDoc)
+			defaults = buildDefaultPlan(doc, tmplDoc, tmplLines)
 			doc.Variables = template.InheritVariables(doc, tmplDoc)
 			doc.Headings = template.MergeHeadings(doc, tmplDoc)
 		}
@@ -71,52 +71,46 @@ type defaultSection struct {
 	emitted   bool
 }
 
-// flattenHeadings collects all headings recursively into a flat list (pre-order)
-func flattenHeadings(headings []*ast.Heading) []*ast.Heading {
-	var result []*ast.Heading
-	for _, h := range headings {
-		result = append(result, h)
-		result = append(result, flattenHeadings(h.Children)...)
-	}
-	return result
-}
-
-// headingExists checks if a heading with given slug/text exists in a flat list
-func headingExists(flat []*ast.Heading, slug, text string) bool {
-	for _, h := range flat {
-		if h.Slug == slug || h.Text == text {
-			return true
-		}
-	}
-	return false
-}
-
 // buildDefaultPlan creates injection plan for @default sections.
-// Recursively checks all heading levels (H2, H3, H4, ...).
-func buildDefaultPlan(child, tmpl *ast.Document) []defaultSection {
+// Uses a slug set for O(1) child heading lookup. Single pass through template headings.
+func buildDefaultPlan(child, tmpl *ast.Document, tmplLines []string) []defaultSection {
 	tmplHeadings := tmpl.Headings
 	if len(tmplHeadings) > 0 && tmplHeadings[0].Level == 1 {
 		tmplHeadings = tmplHeadings[0].Children
 	}
 
-	// Flatten all headings for lookup
-	tmplFlat := flattenHeadings(tmplHeadings)
-	childFlat := flattenHeadings(child.Headings)
+	// Build child heading slug set — O(1) lookup instead of O(n)
+	childSlugs := make(map[string]bool)
+	var collectSlugs func([]*ast.Heading)
+	collectSlugs = func(hs []*ast.Heading) {
+		for _, h := range hs {
+			childSlugs[h.Slug] = true
+			collectSlugs(h.Children)
+		}
+	}
+	collectSlugs(child.Headings)
 
-	tmplLines := strings.Split(tmpl.Source, "\n")
+	// Flatten template headings and build plan in one pass
+	var tmplFlat []*ast.Heading
+	var walkTmpl func([]*ast.Heading)
+	walkTmpl = func(hs []*ast.Heading) {
+		for _, h := range hs {
+			tmplFlat = append(tmplFlat, h)
+			walkTmpl(h.Children)
+		}
+	}
+	walkTmpl(tmplHeadings)
+
 	var plan []defaultSection
-
 	for i, th := range tmplFlat {
 		if th.Annotation != ast.AnnotationDefault {
 			continue
 		}
-
-		// Skip if child already has this heading
-		if headingExists(childFlat, th.Slug, th.Text) {
+		if childSlugs[th.Slug] {
 			continue
 		}
 
-		// Extract content from template
+		// Extract content lines (reuse tmplLines, no re-split)
 		start := th.Position.Line - 1
 		end := th.Content.End.Line
 		if end <= 0 || end > len(tmplLines) {
@@ -129,12 +123,11 @@ func buildDefaultPlan(child, tmpl *ast.Document) []defaultSection {
 			}
 		}
 
-		// Find preceding heading slug that exists in child
+		// Find nearest preceding heading that exists in child
 		afterSlug := ""
 		for j := i - 1; j >= 0; j-- {
-			prev := tmplFlat[j]
-			if headingExists(childFlat, prev.Slug, prev.Text) {
-				afterSlug = prev.Slug
+			if childSlugs[tmplFlat[j].Slug] {
+				afterSlug = tmplFlat[j].Slug
 				break
 			}
 		}

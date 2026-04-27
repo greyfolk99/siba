@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -412,8 +413,8 @@ func renderSingleFile(path string, jsonMode bool) {
 	cwd, _ := os.Getwd()
 	ws, _ := workspace.LoadWorkspace(cwd)
 
-	output, err := render.RenderWithWorkspace(doc, ws)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := render.StreamRender(doc, &buf, ws); err != nil {
 		if jsonMode {
 			writeJSON(JSONRenderResult{File: path, Error: err.Error()})
 		} else {
@@ -421,6 +422,7 @@ func renderSingleFile(path string, jsonMode bool) {
 		}
 		os.Exit(1)
 	}
+	output := buf.String()
 
 	if jsonMode {
 		writeJSON(JSONRenderResult{File: path, Content: output})
@@ -767,11 +769,12 @@ func renderOrRaw(doc *ast.Document, symbol string, rawMode bool) string {
 	} else {
 		cwd, _ := os.Getwd()
 		ws, _ := workspace.LoadWorkspace(cwd)
-		rendered, err := render.RenderWithWorkspace(doc, ws)
-		if err != nil {
+		var buf bytes.Buffer
+		if err := render.StreamRender(doc, &buf, ws); err != nil {
 			fmt.Fprintf(os.Stderr, "render error: %v\n", err)
 			os.Exit(1)
 		}
+		rendered := buf.String()
 		if symbol != "" {
 			// re-parse rendered output to extract section
 			tmpDoc := parser.ParseDocument(doc.Path, rendered)
