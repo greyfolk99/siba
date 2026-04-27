@@ -389,8 +389,8 @@ func resolveImportForRender(importPath string, ws *workspace.Workspace) *ast.Doc
 	return nil
 }
 
-// injectDefaultSections appends @default heading content from template
-// for headings that exist in template but not in child source.
+// injectDefaultSections inserts @default heading content from template
+// at the correct position in child source, preserving template heading order.
 func injectDefaultSections(childSource string, tmplDoc *ast.Document) string {
 	childLines := strings.Split(childSource, "\n")
 	tmplLines := strings.Split(tmplDoc.Source, "\n")
@@ -401,45 +401,101 @@ func injectDefaultSections(childSource string, tmplDoc *ast.Document) string {
 		tmplHeadings = tmplHeadings[0].Children
 	}
 
-	// Find @default headings in template that are missing in child
-	for _, th := range tmplHeadings {
+	// Get child H1 children
+	childDoc := parser.ParseDocument("__child__", childSource)
+	childHeadings := childDoc.Headings
+	if len(childHeadings) > 0 && childHeadings[0].Level == 1 {
+		childHeadings = childHeadings[0].Children
+	}
+
+	// Build insertion plan: for each missing @default, find where to insert
+	type insertion struct {
+		afterLine int    // insert after this line (0-based)
+		content   string // section content to insert
+	}
+	var insertions []insertion
+
+	for i, th := range tmplHeadings {
 		if th.Annotation != ast.AnnotationDefault {
 			continue
 		}
-		// Check if child has this heading
+
+		// Check if child already has this heading
 		found := false
-		for _, line := range childLines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "#") {
-				slug := parser.GenerateSlug(strings.TrimLeft(trimmed, "# "))
-				if slug == th.Slug || strings.TrimLeft(trimmed, "# ") == th.Text {
-					found = true
-					break
-				}
+		for _, ch := range childHeadings {
+			if ch.Slug == th.Slug || ch.Text == th.Text {
+				found = true
+				break
 			}
 		}
 		if found {
 			continue
 		}
 
-		// Extract template section content and append
+		// Extract template section content
 		start := th.Position.Line - 1
 		end := th.Content.End.Line
 		if end <= 0 || end > len(tmplLines) {
 			end = len(tmplLines)
 		}
-		if start < len(tmplLines) {
-			var section []string
-			for _, l := range tmplLines[start:end] {
-				if !parser.IsDirectiveLine(l) {
-					section = append(section, l)
+		if start >= len(tmplLines) {
+			continue
+		}
+		var section []string
+		for _, l := range tmplLines[start:end] {
+			if !parser.IsDirectiveLine(l) {
+				section = append(section, l)
+			}
+		}
+		sectionContent := strings.Join(section, "\n")
+
+		// Find insert position: after the previous template heading's position in child
+		insertAfter := len(childLines) - 1 // default: end of file
+
+		// Look for the preceding heading (template order) in child
+		for j := i - 1; j >= 0; j-- {
+			prevTmpl := tmplHeadings[j]
+			for _, ch := range childHeadings {
+				if ch.Slug == prevTmpl.Slug || ch.Text == prevTmpl.Text {
+					// Insert after this child heading's content
+					endLine := ch.Content.End.Line - 1
+					if endLine < 0 {
+						endLine = ch.Position.Line
+					}
+					insertAfter = endLine
+					goto foundPos
 				}
 			}
-			childSource += "\n" + strings.Join(section, "\n")
 		}
+	foundPos:
+		insertions = append(insertions, insertion{
+			afterLine: insertAfter,
+			content:   sectionContent,
+		})
 	}
 
-	return childSource
+	if len(insertions) == 0 {
+		return childSource
+	}
+
+	// Apply insertions from bottom to top (so line numbers stay valid)
+	for i := len(insertions) - 1; i >= 0; i-- {
+		ins := insertions[i]
+		pos := ins.afterLine + 1
+		if pos > len(childLines) {
+			pos = len(childLines)
+		}
+
+		// Insert content
+		newLines := make([]string, 0, len(childLines)+10)
+		newLines = append(newLines, childLines[:pos]...)
+		newLines = append(newLines, "")
+		newLines = append(newLines, strings.Split(ins.content, "\n")...)
+		newLines = append(newLines, childLines[pos:]...)
+		childLines = newLines
+	}
+
+	return strings.Join(childLines, "\n")
 }
 
 var directiveCheckRe = refDirectiveRe
