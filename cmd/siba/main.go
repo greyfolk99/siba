@@ -52,6 +52,16 @@ func main() {
 	jsonMode := hasFlag("--json")
 
 	rawMode := hasFlag("--raw")
+
+	if hasFlag("--help") {
+		if len(os.Args) >= 2 {
+			runHelp(os.Args[1])
+		} else {
+			runHelp("")
+		}
+		return
+	}
+
 	args := argsWithout(2, "--json", "--raw")
 
 	switch os.Args[1] {
@@ -378,63 +388,6 @@ func runExport(jsonMode bool) {
 
 	if !jsonMode {
 		fmt.Printf("export complete: v%s\n", version)
-	}
-}
-
-func renderSingleFile(path string, jsonMode bool) {
-	source, err := os.ReadFile(path)
-	if err != nil {
-		if jsonMode {
-			writeJSON(JSONExportResult{File: path, Error: err.Error()})
-		} else {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		}
-		os.Exit(1)
-	}
-
-	doc := parser.ParseDocument(path, string(source))
-
-	hasErrors := false
-	for _, d := range doc.Diagnostics {
-		if d.Severity == ast.SeverityError {
-			if !jsonMode {
-				fmt.Fprintf(os.Stderr, "%s:%d: error: %s\n", path, d.Range.Start.Line, d.Message)
-			}
-			hasErrors = true
-		}
-	}
-
-	if hasErrors && jsonMode {
-		var jdiags []JSONDiagnostic
-		for _, d := range doc.Diagnostics {
-			jdiags = append(jdiags, toJSONDiagnostic(d))
-		}
-		writeJSON(JSONExportResult{File: path, Error: "document has errors"})
-		os.Exit(1)
-	}
-	if hasErrors {
-		os.Exit(1)
-	}
-
-	// Load workspace for cross-doc refs and @default inheritance
-	cwd, _ := os.Getwd()
-	ws, _ := workspace.LoadWorkspace(cwd)
-
-	var buf bytes.Buffer
-	if err := render.StreamRender(doc, &buf, ws); err != nil {
-		if jsonMode {
-			writeJSON(JSONExportResult{File: path, Error: err.Error()})
-		} else {
-			fmt.Fprintf(os.Stderr, "render error: %v\n", err)
-		}
-		os.Exit(1)
-	}
-	output := buf.String()
-
-	if jsonMode {
-		writeJSON(JSONExportResult{File: path, Content: output})
-	} else {
-		fmt.Print(output)
 	}
 }
 
@@ -1510,140 +1463,3 @@ func runHelp(topic string) {
 	}
 }
 
-func runGraph(jsonMode bool) {
-	cwd, _ := os.Getwd()
-	ws, err := workspace.LoadWorkspace(cwd)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Build nodes
-	var nodes []JSONGraphNode
-	docIDs := make(map[string]string) // path → id
-
-	for path, doc := range ws.DocsByPath {
-		id := path
-		if doc.Name != "" {
-			id = doc.Name
-		}
-		docIDs[path] = id
-
-		nodes = append(nodes, JSONGraphNode{
-			ID:         id,
-			Name:       doc.Name,
-			Path:       path,
-			IsTemplate: doc.IsTemplate,
-			Variables:  len(doc.Variables),
-			Headings:   countHeadings(doc.Headings),
-		})
-	}
-
-	// Build edges
-	var edges []JSONGraphEdge
-
-	for path, doc := range ws.DocsByPath {
-		sourceID := docIDs[path]
-
-		// @extends → "extends" edge
-		if doc.ExtendsName != "" {
-			edges = append(edges, JSONGraphEdge{
-				Source: sourceID,
-				Target: doc.ExtendsName,
-				Type:   "extends",
-			})
-		}
-
-		// {{doc-name}} references
-		for _, ref := range doc.References {
-			if ref.IsEscaped {
-				continue
-			}
-
-			// document content insertion: {{doc-name}} or {{doc-name#section}}
-			if ref.PathPart != "" && ref.Variable == "" {
-				if targetDoc := ws.GetDocument(ref.PathPart); targetDoc != nil {
-					edgeType := "ref"
-					if ref.Section != "" {
-						edgeType = "section_ref"
-					}
-					edges = append(edges, JSONGraphEdge{
-						Source: sourceID,
-						Target: ref.PathPart,
-						Type:   edgeType,
-					})
-				}
-			}
-
-			// variable reference: {{doc-name.variable}}
-			if ref.PathPart != "" && ref.Variable != "" {
-				if targetDoc := ws.GetDocument(ref.PathPart); targetDoc != nil {
-					edges = append(edges, JSONGraphEdge{
-						Source: sourceID,
-						Target: ref.PathPart,
-						Type:   "variable_ref",
-					})
-				}
-			}
-		}
-	}
-
-	result := JSONGraphResult{
-		Nodes: nodes,
-		Edges: edges,
-	}
-
-	if jsonMode {
-		writeJSON(result)
-		return
-	}
-
-	// DOT output (default)
-	fmt.Println("digraph siba {")
-	fmt.Println("  rankdir=LR;")
-	fmt.Println("  node [shape=box, style=rounded, fontname=\"sans-serif\"];")
-	fmt.Println()
-
-	for _, n := range nodes {
-		shape := "box"
-		if n.IsTemplate {
-			shape = "diamond"
-		}
-		label := n.ID
-		if n.Name != "" && n.Name != n.Path {
-			label = n.Name
-		}
-		fmt.Printf("  %q [label=%q, shape=%s];\n", n.ID, label, shape)
-	}
-
-	fmt.Println()
-
-	for _, e := range edges {
-		style := "solid"
-		color := "black"
-		label := ""
-		switch e.Type {
-		case "extends":
-			style = "bold"
-			color = "blue"
-			label = "extends"
-		case "ref":
-			color = "gray40"
-		case "section_ref":
-			color = "gray60"
-			style = "dashed"
-			label = "#"
-		case "variable_ref":
-			color = "orange"
-			style = "dotted"
-			label = "."
-		}
-		attrs := fmt.Sprintf("style=%s, color=%s", style, color)
-		if label != "" {
-			attrs += fmt.Sprintf(", label=%q", label)
-		}
-		fmt.Printf("  %q -> %q [%s];\n", e.Source, e.Target, attrs)
-	}
-
-	fmt.Println("}")
-}

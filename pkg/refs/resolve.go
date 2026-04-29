@@ -277,22 +277,6 @@ func ValidateReferences(doc *ast.Document, rootScope *scope.Scope, ws *workspace
 	return diags
 }
 
-func resolveDocByNameOrPath(name string, ws *workspace.Workspace) *ast.Document {
-	// try by @doc name
-	if doc := ws.GetDocument(name); doc != nil {
-		return doc
-	}
-	// try by path
-	if doc := ws.GetDocumentByPath(name); doc != nil {
-		return doc
-	}
-	// try by path with .md
-	if doc := ws.GetDocumentByPath(name + ".md"); doc != nil {
-		return doc
-	}
-	return nil
-}
-
 func findHeading(headings []*ast.Heading, nameOrSlug string) *ast.Heading {
 	for _, h := range headings {
 		if h.Name == nameOrSlug || h.Slug == nameOrSlug {

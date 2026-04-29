@@ -136,7 +136,6 @@ POST /v1/payments ...
 ```markdown
 <!-- @const service-name = "identity" -->              public (default)
 <!-- @const private db-password = "secret" -->          this document only
-<!-- @const protected base-url = "/api/v1" -->          this + extending documents
 ```
 
 ### Reference Syntax

@@ -665,51 +665,6 @@ func TestDetectCycles_DisconnectedNoCycle(t *testing.T) {
 	}
 }
 
-// --- resolveDocByNameOrPath ---
-
-// TestResolveDocByNameOrPath_ByName verifies that a document is found by its name in the workspace.
-func TestResolveDocByNameOrPath_ByName(t *testing.T) {
-	doc := makeDoc("config", "config.md")
-	ws := makeWorkspace(doc)
-
-	result := resolveDocByNameOrPath("config", ws)
-	if result != doc {
-		t.Fatal("expected to find doc by name")
-	}
-}
-
-// TestResolveDocByNameOrPath_ByPath verifies that a document is found by its exact file path.
-func TestResolveDocByNameOrPath_ByPath(t *testing.T) {
-	doc := makeDoc("", "docs/config.md")
-	ws := makeWorkspace(doc)
-
-	result := resolveDocByNameOrPath("docs/config.md", ws)
-	if result != doc {
-		t.Fatal("expected to find doc by path")
-	}
-}
-
-// TestResolveDocByNameOrPath_ByPathWithMd verifies that a path without .md extension is resolved by appending .md.
-func TestResolveDocByNameOrPath_ByPathWithMd(t *testing.T) {
-	doc := makeDoc("", "docs/config.md")
-	ws := makeWorkspace(doc)
-
-	result := resolveDocByNameOrPath("docs/config", ws)
-	if result != doc {
-		t.Fatal("expected to find doc by path with .md extension")
-	}
-}
-
-// TestResolveDocByNameOrPath_NotFound verifies that a nonexistent name/path returns nil.
-func TestResolveDocByNameOrPath_NotFound(t *testing.T) {
-	ws := makeWorkspace()
-
-	result := resolveDocByNameOrPath("nonexistent", ws)
-	if result != nil {
-		t.Fatal("expected nil for not found")
-	}
-}
-
 // --- findHeading ---
 
 // TestFindHeading_ByName verifies that a heading is found by its explicit name attribute.
