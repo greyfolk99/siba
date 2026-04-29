@@ -35,12 +35,14 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 
 	// Apply template inheritance (lightweight — no parsing, just variable/heading merge)
 	var defaults []defaultSection
+	inheritedVars := make([]ast.Variable, len(doc.Variables))
+	copy(inheritedVars, doc.Variables)
 	if ws != nil && doc.ExtendsName != "" {
 		tmplDoc, _ := template.ResolveTemplate(doc, ws)
 		if tmplDoc != nil {
 			tmplLines := strings.Split(tmplDoc.Source, "\n")
 			defaults = buildDefaultPlan(doc, tmplDoc, tmplLines)
-			doc.Variables = template.InheritVariables(doc, tmplDoc)
+			inheritedVars = template.InheritVariables(doc, tmplDoc)
 		}
 	}
 
@@ -57,7 +59,7 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 		scopeStack: []*scope.Scope{
 			scope.NewScope("__root__", scope.ScopeHeading, nil),
 		},
-		inheritedVars: doc.Variables, // from template inheritance
+		inheritedVars: inheritedVars,
 	}
 
 	return interp.run()
@@ -495,7 +497,7 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 		if strings.HasPrefix(inner, "#") {
 			symbol := inner[1:]
 			if ip.doc != nil {
-				h := findHeadingInList(ip.doc.Headings, symbol)
+				h := ast.FindHeading(ip.doc.Headings, symbol)
 				if h != nil {
 					return extractHeadingContent(ip.doc.Source, h)
 				}
@@ -510,9 +512,9 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 			if ip.ws != nil && ip.doc != nil {
 				for _, imp := range ip.doc.Imports {
 					if imp.Alias == alias {
-						targetDoc := resolveImportForRender(imp.Path, ip.ws)
+						targetDoc := ip.ws.ResolveImportDoc(imp.Path)
 						if targetDoc != nil {
-							h := findHeadingInList(targetDoc.Headings, symbol)
+							h := ast.FindHeading(targetDoc.Headings, symbol)
 							if h != nil {
 								return extractHeadingContent(targetDoc.Source, h)
 							}
@@ -549,7 +551,7 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 			if ip.ws != nil && ip.doc != nil {
 				for _, imp := range ip.doc.Imports {
 					if imp.Alias == objName {
-						targetDoc := resolveImportForRender(imp.Path, ip.ws)
+						targetDoc := ip.ws.ResolveImportDoc(imp.Path)
 						if targetDoc != nil {
 							for _, tv := range targetDoc.Variables {
 								if tv.Name == propName && tv.Access != ast.AccessPrivate {
@@ -593,32 +595,7 @@ func (ip *interpreter) writeLine(line string) error {
 	return err
 }
 
-func resolveImportForRender(importPath string, ws *workspace.Workspace) *ast.Document {
-	clean := strings.TrimPrefix(importPath, "./")
-	if doc := ws.GetDocumentByPath(clean); doc != nil {
-		return doc
-	}
-	if doc := ws.GetDocumentByPath(clean + ".md"); doc != nil {
-		return doc
-	}
-	if doc := ws.GetDocument(importPath); doc != nil {
-		return doc
-	}
-	return nil
-}
 var directiveCheckRe = refDirectiveRe
-
-func findHeadingInList(headings []*ast.Heading, nameOrSlug string) *ast.Heading {
-	for _, h := range headings {
-		if h.Name == nameOrSlug || h.Slug == nameOrSlug {
-			return h
-		}
-		if found := findHeadingInList(h.Children, nameOrSlug); found != nil {
-			return found
-		}
-	}
-	return nil
-}
 
 func extractHeadingContent(source string, h *ast.Heading) string {
 	lines := strings.Split(source, "\n")

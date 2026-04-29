@@ -61,7 +61,7 @@ func ResolveReference(ref ast.Reference, currentDoc *ast.Document, rootScope *sc
 		if currentDoc != nil && ws != nil {
 			for _, imp := range currentDoc.Imports {
 				if imp.Alias == ref.PathPart {
-					targetDoc := resolveImportPath(imp.Path, ws)
+					targetDoc := ws.ResolveImportDoc(imp.Path)
 					if targetDoc != nil {
 						for i, tv := range targetDoc.Variables {
 							if tv.Name == ref.Variable && tv.Access != ast.AccessPrivate && tv.Value != nil {
@@ -171,7 +171,7 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 
 		// resolve import path to document via workspace
 		if ws != nil {
-			targetDoc = resolveImportPath(importPath, ws)
+			targetDoc = ws.ResolveImportDoc(importPath)
 		}
 		if targetDoc == nil {
 			return nil, &ast.Diagnostic{
@@ -194,7 +194,7 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 
 	// resolve symbol within the target document
 	// Try heading by name/slug
-	heading := findHeading(targetDoc.Headings, symbol)
+	heading := ast.FindHeading(targetDoc.Headings, symbol)
 	if heading != nil {
 		return &ResolvedRef{
 			Kind:    ResolvedSection,
@@ -221,10 +221,10 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 	// For nested symbols with /, try the first segment
 	if strings.Contains(symbol, "/") {
 		parts := strings.SplitN(symbol, "/", 2)
-		heading = findHeading(targetDoc.Headings, parts[0])
+		heading = ast.FindHeading(targetDoc.Headings, parts[0])
 		if heading != nil && len(parts) > 1 {
 			// recursive search in children
-			nested := findHeading(heading.Children, parts[1])
+			nested := ast.FindHeading(heading.Children, parts[1])
 			if nested != nil {
 				return &ResolvedRef{
 					Kind:    ResolvedSection,
@@ -242,26 +242,6 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 	}
 }
 
-// resolveImportPath resolves an import path (relative or absolute) to a document
-func resolveImportPath(importPath string, ws *workspace.Workspace) *ast.Document {
-	// strip leading ./
-	clean := strings.TrimPrefix(importPath, "./")
-
-	// try by path
-	if doc := ws.GetDocumentByPath(clean); doc != nil {
-		return doc
-	}
-	// try with .md
-	if doc := ws.GetDocumentByPath(clean + ".md"); doc != nil {
-		return doc
-	}
-	// try by @doc name (for package references)
-	if doc := ws.GetDocument(importPath); doc != nil {
-		return doc
-	}
-	return nil
-}
-
 // ValidateReferences validates all references in a document
 func ValidateReferences(doc *ast.Document, rootScope *scope.Scope, ws *workspace.Workspace) []ast.Diagnostic {
 	var diags []ast.Diagnostic
@@ -275,19 +255,6 @@ func ValidateReferences(doc *ast.Document, rootScope *scope.Scope, ws *workspace
 		}
 	}
 	return diags
-}
-
-func findHeading(headings []*ast.Heading, nameOrSlug string) *ast.Heading {
-	for _, h := range headings {
-		if h.Name == nameOrSlug || h.Slug == nameOrSlug {
-			return h
-		}
-		// search children
-		if found := findHeading(h.Children, nameOrSlug); found != nil {
-			return found
-		}
-	}
-	return nil
 }
 
 // DependencyGraph tracks document dependencies for cycle detection

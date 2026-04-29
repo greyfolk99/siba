@@ -665,7 +665,7 @@ func TestDetectCycles_DisconnectedNoCycle(t *testing.T) {
 	}
 }
 
-// --- findHeading ---
+// --- ast.FindHeading ---
 
 // TestFindHeading_ByName verifies that a heading is found by its explicit name attribute.
 func TestFindHeading_ByName(t *testing.T) {
@@ -673,7 +673,7 @@ func TestFindHeading_ByName(t *testing.T) {
 		{Level: 1, Text: "Introduction", Slug: "introduction", Name: "intro"},
 	}
 
-	result := findHeading(headings, "intro")
+	result := ast.FindHeading(headings, "intro")
 	if result == nil {
 		t.Fatal("expected to find heading by name")
 	}
@@ -685,13 +685,13 @@ func TestFindHeading_BySlug(t *testing.T) {
 		{Level: 1, Text: "My Section", Slug: "my-section"},
 	}
 
-	result := findHeading(headings, "my-section")
+	result := ast.FindHeading(headings, "my-section")
 	if result == nil {
 		t.Fatal("expected to find heading by slug")
 	}
 }
 
-// TestFindHeading_InChildren verifies that findHeading recursively searches child headings.
+// TestFindHeading_InChildren verifies that ast.FindHeading recursively searches child headings.
 func TestFindHeading_InChildren(t *testing.T) {
 	headings := []*ast.Heading{
 		{Level: 1, Text: "Root", Slug: "root", Children: []*ast.Heading{
@@ -699,7 +699,7 @@ func TestFindHeading_InChildren(t *testing.T) {
 		}},
 	}
 
-	result := findHeading(headings, "child")
+	result := ast.FindHeading(headings, "child")
 	if result == nil {
 		t.Fatal("expected to find child heading")
 	}
@@ -711,7 +711,7 @@ func TestFindHeading_NotFound(t *testing.T) {
 		{Level: 1, Text: "Intro", Slug: "intro"},
 	}
 
-	result := findHeading(headings, "missing")
+	result := ast.FindHeading(headings, "missing")
 	if result != nil {
 		t.Fatal("expected nil for not found")
 	}
@@ -719,7 +719,7 @@ func TestFindHeading_NotFound(t *testing.T) {
 
 // TestFindHeading_EmptyList verifies that searching a nil heading list returns nil.
 func TestFindHeading_EmptyList(t *testing.T) {
-	result := findHeading(nil, "any")
+	result := ast.FindHeading(nil, "any")
 	if result != nil {
 		t.Fatal("expected nil for empty list")
 	}

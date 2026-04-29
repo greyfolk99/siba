@@ -748,7 +748,7 @@ func renderOrRaw(doc *ast.Document, symbol string, rawMode bool) string {
 
 func extractSection(doc *ast.Document, symbol string) string {
 	lines := strings.Split(doc.Source, "\n")
-	h := findHeading(doc.Headings, symbol)
+	h := ast.FindHeading(doc.Headings, symbol)
 	if h == nil {
 		fmt.Fprintf(os.Stderr, "error: symbol %q not found\n", symbol)
 		os.Exit(1)
@@ -759,18 +759,6 @@ func extractSection(doc *ast.Document, symbol string) string {
 		end = len(lines)
 	}
 	return strings.Join(lines[start:end], "\n") + "\n"
-}
-
-func findHeading(headings []*ast.Heading, symbol string) *ast.Heading {
-	for _, h := range headings {
-		if h.Slug == symbol || h.Name == symbol || h.Text == symbol {
-			return h
-		}
-		if found := findHeading(h.Children, symbol); found != nil {
-			return found
-		}
-	}
-	return nil
 }
 
 func runCat(fileArg string, rawMode bool) {

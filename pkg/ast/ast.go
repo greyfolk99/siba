@@ -318,3 +318,16 @@ func ValueToString(v Value) string {
 		return ""
 	}
 }
+
+// FindHeading recursively searches headings by Name, Slug, or Text.
+func FindHeading(headings []*Heading, nameOrSlug string) *Heading {
+	for _, h := range headings {
+		if h.Name == nameOrSlug || h.Slug == nameOrSlug || h.Text == nameOrSlug {
+			return h
+		}
+		if found := FindHeading(h.Children, nameOrSlug); found != nil {
+			return found
+		}
+	}
+	return nil
+}

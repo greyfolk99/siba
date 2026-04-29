@@ -112,6 +112,21 @@ func (w *Workspace) GetDocumentByPath(path string) *ast.Document {
 	return w.DocsByPath[path]
 }
 
+// ResolveImportDoc resolves an import path (relative, with/without .md, or @doc name) to a document.
+func (w *Workspace) ResolveImportDoc(importPath string) *ast.Document {
+	clean := strings.TrimPrefix(importPath, "./")
+	if doc := w.GetDocumentByPath(clean); doc != nil {
+		return doc
+	}
+	if doc := w.GetDocumentByPath(clean + ".md"); doc != nil {
+		return doc
+	}
+	if doc := w.GetDocument(importPath); doc != nil {
+		return doc
+	}
+	return nil
+}
+
 // GetTemplate returns a template document by its @template name
 func (w *Workspace) GetTemplate(name string) *ast.Document {
 	if doc, ok := w.Templates[name]; ok {
