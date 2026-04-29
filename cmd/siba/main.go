@@ -64,19 +64,26 @@ func main() {
 		runCat(args[0], rawMode)
 	case "head":
 		n := 10
+		c := 0
 		file := ""
 		for i, a := range args {
 			if a == "-n" && i+1 < len(args) {
 				fmt.Sscanf(args[i+1], "%d", &n)
+			} else if a == "-c" && i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &c)
 			} else if !strings.HasPrefix(a, "-") {
 				file = a
 			}
 		}
 		if file == "" {
-			fmt.Fprintln(os.Stderr, "usage: siba head [-n N] <file.md[#symbol]>")
+			fmt.Fprintln(os.Stderr, "usage: siba head [-n N|-c N] <file.md[#symbol]>")
 			os.Exit(2)
 		}
-		runHead(file, n, rawMode)
+		if c > 0 {
+			runHeadBytes(file, c, rawMode)
+		} else {
+			runHead(file, n, rawMode)
+		}
 	case "tail":
 		n := 10
 		file := ""
@@ -238,8 +245,8 @@ type JSONCheckWorkspaceResult struct {
 	Workspace   []JSONDiagnostic  `json:"workspace_diagnostics"`
 }
 
-// JSONRenderResult is the result of siba render --json
-type JSONRenderResult struct {
+// JSONExportResult is the result of siba render --json
+type JSONExportResult struct {
 	File    string `json:"file"`
 	Content string `json:"content,omitempty"`
 	Error   string `json:"error,omitempty"`
@@ -342,7 +349,7 @@ func runExport(jsonMode bool) {
 	w, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		if jsonMode {
-			writeJSON(JSONRenderResult{Error: err.Error()})
+			writeJSON(JSONExportResult{Error: err.Error()})
 		} else {
 			fmt.Fprintf(os.Stderr, "error loading workspace: %v\n", err)
 		}
@@ -356,11 +363,11 @@ func runExport(jsonMode bool) {
 
 	version := w.GetVersion()
 	if !jsonMode {
-		fmt.Printf("rendering v%s...\n", version)
+		fmt.Printf("exporting v%s...\n", version)
 	}
 
 	if err := render.RenderWorkspace(w, outputDir); err != nil {
-		fmt.Fprintf(os.Stderr, "render failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "export failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -370,7 +377,7 @@ func runExport(jsonMode bool) {
 	}
 
 	if !jsonMode {
-		fmt.Printf("render complete: v%s\n", version)
+		fmt.Printf("export complete: v%s\n", version)
 	}
 }
 
@@ -378,7 +385,7 @@ func renderSingleFile(path string, jsonMode bool) {
 	source, err := os.ReadFile(path)
 	if err != nil {
 		if jsonMode {
-			writeJSON(JSONRenderResult{File: path, Error: err.Error()})
+			writeJSON(JSONExportResult{File: path, Error: err.Error()})
 		} else {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
@@ -402,7 +409,7 @@ func renderSingleFile(path string, jsonMode bool) {
 		for _, d := range doc.Diagnostics {
 			jdiags = append(jdiags, toJSONDiagnostic(d))
 		}
-		writeJSON(JSONRenderResult{File: path, Error: "document has errors"})
+		writeJSON(JSONExportResult{File: path, Error: "document has errors"})
 		os.Exit(1)
 	}
 	if hasErrors {
@@ -416,7 +423,7 @@ func renderSingleFile(path string, jsonMode bool) {
 	var buf bytes.Buffer
 	if err := render.StreamRender(doc, &buf, ws); err != nil {
 		if jsonMode {
-			writeJSON(JSONRenderResult{File: path, Error: err.Error()})
+			writeJSON(JSONExportResult{File: path, Error: err.Error()})
 		} else {
 			fmt.Fprintf(os.Stderr, "render error: %v\n", err)
 		}
@@ -425,7 +432,7 @@ func renderSingleFile(path string, jsonMode bool) {
 	output := buf.String()
 
 	if jsonMode {
-		writeJSON(JSONRenderResult{File: path, Content: output})
+		writeJSON(JSONExportResult{File: path, Content: output})
 	} else {
 		fmt.Print(output)
 	}
@@ -854,6 +861,42 @@ func runHead(fileArg string, n int, rawMode bool) {
 		lines = lines[:n]
 	}
 	fmt.Println(strings.Join(lines, "\n"))
+}
+
+func runHeadBytes(fileArg string, c int, rawMode bool) {
+	doc, symbol := loadAndParse(fileArg)
+	if !rawMode && symbol == "" {
+		cwd, _ := os.Getwd()
+		ws, _ := workspace.LoadWorkspace(cwd)
+		bw := &byteWriter{w: os.Stdout, limit: c}
+		render.StreamRender(doc, bw, ws)
+		return
+	}
+	output := renderOrRaw(doc, symbol, rawMode)
+	if len(output) > c {
+		output = output[:c]
+	}
+	fmt.Print(output)
+}
+
+// byteWriter wraps an io.Writer and stops after N bytes
+type byteWriter struct {
+	w     io.Writer
+	limit int
+	count int
+}
+
+func (bw *byteWriter) Write(p []byte) (int, error) {
+	remaining := bw.limit - bw.count
+	if remaining <= 0 {
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		p = p[:remaining]
+	}
+	n, err := bw.w.Write(p)
+	bw.count += n
+	return n, err
 }
 
 func runTail(fileArg string, n int, rawMode bool) {
@@ -1317,17 +1360,11 @@ func runFind(query string, headingOnly bool, variableOnly bool, jsonMode bool) {
 			}
 			continue
 		}
-		// grep source text
-		lines := strings.Split(doc.Source, "\n")
-		for i, line := range lines {
-			if strings.Contains(strings.ToLower(line), queryLower) {
-				results = append(results, JSONFindResult{
-					File: path,
-					Line: i + 1,
-					Text: strings.TrimSpace(line),
-					Kind: "content",
-				})
-			}
+		// grep rendered text (streaming)
+		gw := &grepWriter{query: queryLower, file: path}
+		render.StreamRender(doc, gw, ws)
+		for _, r := range gw.results {
+			results = append(results, r)
 		}
 	}
 
@@ -1346,6 +1383,36 @@ func runFind(query string, headingOnly bool, variableOnly bool, jsonMode bool) {
 	for _, r := range results {
 		fmt.Printf("%s:%d: %s\n", r.File, r.Line, r.Text)
 	}
+}
+
+// grepWriter collects lines matching a query during streaming render
+type grepWriter struct {
+	query   string
+	file    string
+	line    int
+	sb      strings.Builder
+	results []JSONFindResult
+}
+
+func (gw *grepWriter) Write(p []byte) (int, error) {
+	for _, b := range p {
+		if b == '\n' {
+			gw.line++
+			text := gw.sb.String()
+			if strings.Contains(strings.ToLower(text), gw.query) {
+				gw.results = append(gw.results, JSONFindResult{
+					File: gw.file,
+					Line: gw.line,
+					Text: strings.TrimSpace(text),
+					Kind: "content",
+				})
+			}
+			gw.sb.Reset()
+		} else {
+			gw.sb.WriteByte(b)
+		}
+	}
+	return len(p), nil
 }
 
 func searchHeadings(headings []*ast.Heading, path string, query string, results *[]JSONFindResult) {

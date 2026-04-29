@@ -107,6 +107,11 @@ func ParseDocument(path string, source string) *ast.Document {
 		doc.Diagnostics = append(doc.Diagnostics, *diag)
 	}
 
+	// Template restrictions: E005 (control flow outside @default), E006 (heading inside control flow)
+	if doc.IsTemplate {
+		doc.Diagnostics = append(doc.Diagnostics, validateTemplateRestrictions(source, doc.Directives, doc.ControlBlocks)...)
+	}
+
 	// @template without name is an error
 	if doc.IsTemplate && doc.Name == "" {
 		doc.Diagnostics = append(doc.Diagnostics, ast.Diagnostic{
@@ -186,6 +191,81 @@ func extractImports(directives []ast.Directive) []ast.Import {
 		})
 	}
 	return imports
+}
+
+// validateTemplateRestrictions checks E005 and E006 for template files.
+// E005: @if/@for outside @default heading body
+// E006: heading (# line) inside @if/@for block
+func validateTemplateRestrictions(source string, directives []ast.Directive, blocks []ast.ControlBlock) []ast.Diagnostic {
+	var diags []ast.Diagnostic
+	lines := strings.Split(source, "\n")
+
+	// Find @default heading ranges
+	type defaultRange struct {
+		start, end int
+	}
+	var defaults []defaultRange
+	for i, d := range directives {
+		if d.Kind == ast.DirectiveDefault {
+			// Find the heading this @default annotates (next line)
+			headingLine := d.Position.Line + 1
+			// Find end of this heading's content
+			endLine := len(lines)
+			for j := i + 1; j < len(directives); j++ {
+				if directives[j].Kind == ast.DirectiveDefault || directives[j].Kind == ast.DirectiveDoc || directives[j].Kind == ast.DirectiveTemplate {
+					endLine = directives[j].Position.Line - 1
+					break
+				}
+			}
+			// Also check for next heading in source
+			for li := headingLine; li < len(lines); li++ {
+				trimmed := strings.TrimSpace(lines[li])
+				if li > headingLine-1 && strings.HasPrefix(trimmed, "#") {
+					endLine = li
+					break
+				}
+			}
+			defaults = append(defaults, defaultRange{start: headingLine, end: endLine})
+		}
+	}
+
+	isInDefault := func(line int) bool {
+		for _, dr := range defaults {
+			if line >= dr.start && line <= dr.end {
+				return true
+			}
+		}
+		return false
+	}
+
+	// E005: control blocks outside @default
+	for _, cb := range blocks {
+		if !isInDefault(cb.Start.Line) {
+			diags = append(diags, ast.Diagnostic{
+				Severity: ast.SeverityError,
+				Code:     "E005",
+				Message:  "control flow (@if/@for) not allowed in template outside @default section",
+				Range:    ast.Range{Start: cb.Start, End: cb.Start},
+			})
+		}
+	}
+
+	// E006: heading inside control block
+	for _, cb := range blocks {
+		for li := cb.Start.Line; li < cb.End.Line && li <= len(lines); li++ {
+			trimmed := strings.TrimSpace(lines[li-1])
+			if strings.HasPrefix(trimmed, "#") {
+				diags = append(diags, ast.Diagnostic{
+					Severity: ast.SeverityError,
+					Code:     "E006",
+					Message:  "heading inside control flow block is not allowed in template",
+					Range:    ast.Range{Start: ast.Position{Line: li}, End: ast.Position{Line: li}},
+				})
+			}
+		}
+	}
+
+	return diags
 }
 
 func validateImportOrder(directives []ast.Directive) *ast.Diagnostic {
