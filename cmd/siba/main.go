@@ -884,27 +884,28 @@ func runTail(fileArg string, n int, rawMode bool) {
 type tailWriter struct {
 	limit int
 	buf   []string
-	cur   string
+	sb    strings.Builder
 }
 
 func (tw *tailWriter) Write(p []byte) (int, error) {
 	for _, b := range p {
 		if b == '\n' {
-			tw.buf = append(tw.buf, tw.cur)
+			tw.buf = append(tw.buf, tw.sb.String())
+			tw.sb.Reset()
 			if len(tw.buf) > tw.limit {
 				tw.buf = tw.buf[1:]
 			}
-			tw.cur = ""
 		} else {
-			tw.cur += string(b)
+			tw.sb.WriteByte(b)
 		}
 	}
 	return len(p), nil
 }
 
 func (tw *tailWriter) Lines() []string {
-	if tw.cur != "" {
-		tw.buf = append(tw.buf, tw.cur)
+	if tw.sb.Len() > 0 {
+		tw.buf = append(tw.buf, tw.sb.String())
+		tw.sb.Reset()
 		if len(tw.buf) > tw.limit {
 			tw.buf = tw.buf[1:]
 		}

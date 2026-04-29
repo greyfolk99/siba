@@ -2,6 +2,7 @@ package validate
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/greyfolk99/siba/pkg/ast"
 	"github.com/greyfolk99/siba/pkg/refs"
@@ -15,9 +16,14 @@ import (
 func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnostic {
 	var diags []ast.Diagnostic
 
-	// 0. Apply template inheritance before validation (so inherited vars are visible)
+	// 0. Resolve template once (reuse for inheritance + contract validation)
+	var tmpl *ast.Document
 	if doc.ExtendsName != "" && ws != nil {
-		tmpl, _ := template.ResolveTemplate(doc, ws)
+		var tmplDiag *ast.Diagnostic
+		tmpl, tmplDiag = template.ResolveTemplate(doc, ws)
+		if tmplDiag != nil {
+			diags = append(diags, *tmplDiag)
+		}
 		if tmpl != nil {
 			doc.Variables = template.InheritVariables(doc, tmpl)
 		}
@@ -29,14 +35,12 @@ func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnost
 
 	// 2. Validate references — skip refs inside @for/@if blocks that use iterator vars
 	refDiags := refs.ValidateReferences(doc, rootScope, ws)
-	// Filter out false positives from @for iterator variables
 	refDiags = filterForIteratorFalsePositives(doc, refDiags)
 	diags = append(diags, refDiags...)
 
-	// 3. Template contract validation (if extending a template)
-	if doc.ExtendsName != "" && ws != nil {
-		tmplDiags := validateTemplate(doc, ws)
-		diags = append(diags, tmplDiags...)
+	// 3. Template contract validation (reuse resolved template)
+	if tmpl != nil {
+		diags = append(diags, template.ValidateContract(doc, tmpl)...)
 	}
 
 	// set file path on all diagnostics
@@ -83,7 +87,7 @@ func filterForIteratorFalsePositives(doc *ast.Document, diags []ast.Diagnostic) 
 				if line >= f.start && line <= f.end {
 					// Check if the unresolved ref matches the iterator name or iterator.prop
 					msg := d.Message
-					if contains(msg, f.iterator) {
+					if strings.Contains(msg, f.iterator) {
 						skip = true
 						break
 					}
@@ -98,29 +102,6 @@ func filterForIteratorFalsePositives(doc *ast.Document, diags []ast.Diagnostic) 
 	return filtered
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) > 0 && findSubstring(s, substr))
-}
-
-func findSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
-
-func validateTemplate(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnostic {
-	tmpl, diag := template.ResolveTemplate(doc, ws)
-	if diag != nil {
-		return []ast.Diagnostic{*diag}
-	}
-	if tmpl == nil {
-		return nil
-	}
-	return template.ValidateContract(doc, tmpl)
-}
 
 // ValidateWorkspace validates all documents in a workspace.
 // Returns a map of file path → diagnostics, plus workspace-level diagnostics.
