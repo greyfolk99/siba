@@ -139,6 +139,37 @@ func BuildScopeTree(doc *ast.Document) (*Scope, []ast.Diagnostic) {
 	return root, diags
 }
 
+// BuildScopeTreeWithVars is like BuildScopeTree but uses the provided variable
+// list instead of doc.Variables. This allows callers to pass merged/inherited
+// variables without mutating the document.
+func BuildScopeTreeWithVars(doc *ast.Document, vars []ast.Variable) (*Scope, []ast.Diagnostic) {
+	root := NewScope("__root__", ScopeHeading, nil)
+	root.StartLine = 1
+	root.EndLine = len(strings.Split(doc.Source, "\n"))
+
+	for _, h := range doc.Headings {
+		buildHeadingScope(h, root)
+	}
+
+	for _, cb := range doc.ControlBlocks {
+		parent := findScopeForLine(root, cb.Start.Line)
+		cbScope := NewScope("__control__", ScopeControlBlock, parent)
+		cbScope.StartLine = cb.Start.Line + 1
+		cbScope.EndLine = cb.End.Line - 1
+	}
+
+	var diags []ast.Diagnostic
+	for _, v := range vars {
+		target := findScopeForLine(root, v.Position.Line)
+		if d := target.Declare(v.Name, v); d != nil {
+			d.Range = ast.Range{Start: v.Position, End: v.Position}
+			diags = append(diags, *d)
+		}
+	}
+
+	return root, diags
+}
+
 // FindScopeForLine returns the most specific scope containing the given line
 func FindScopeForLine(root *Scope, line int) *Scope {
 	return findScopeForLine(root, line)

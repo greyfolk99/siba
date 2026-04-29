@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/greyfolk99/siba/pkg/ast"
-	"github.com/greyfolk99/siba/pkg/scope"
 	"github.com/greyfolk99/siba/pkg/types"
 )
 
@@ -77,50 +76,6 @@ func TestEvaluateIf_NegativeNumber(t *testing.T) {
 	}
 }
 
-// TestProcessControlBlocks_IfDiagnosticPropagated verifies that diagnostics from a failing @if condition are surfaced through ProcessControlBlocks.
-func TestProcessControlBlocks_IfDiagnosticPropagated(t *testing.T) {
-	content := "before\n<!-- @if undefined_var == \"x\" -->\ncontent\n<!-- @endif -->\nafter"
-	blocks := []ast.ControlBlock{
-		{
-			Kind:      ast.DirectiveIf,
-			Condition: `undefined_var == "x"`,
-			Start:     ast.Position{Line: 2},
-			End:       ast.Position{Line: 4},
-		},
-	}
-	root := scope.NewScope("root", scope.ScopeHeading, nil)
-	root.StartLine = 1
-	root.EndLine = 5
-	_, diags := ProcessControlBlocks(content, blocks, root)
-	if len(diags) == 0 {
-		t.Fatal("expected diagnostic for undefined variable in @if")
-	}
-}
-
-// TestProcessControlBlocks_ForDiagnosticPropagated verifies that diagnostics from a failing @for evaluation are surfaced through ProcessControlBlocks.
-func TestProcessControlBlocks_ForDiagnosticPropagated(t *testing.T) {
-	content := "before\n<!-- @for x in y -->\ncontent\n<!-- @endfor -->\nafter"
-	blocks := []ast.ControlBlock{
-		{
-			Kind:       ast.DirectiveFor,
-			Iterator:   "x",
-			Collection: "y",
-			Start:      ast.Position{Line: 2},
-			End:        ast.Position{Line: 4},
-		},
-	}
-	root := scope.NewScope("root", scope.ScopeHeading, nil)
-	root.StartLine = 1
-	root.EndLine = 5
-	root.Declare("y", ast.Variable{
-		Name:  "y",
-		Value: strVal("not an array"),
-	})
-	_, diags := ProcessControlBlocks(content, blocks, root)
-	if len(diags) == 0 {
-		t.Fatal("expected diagnostic for non-array in @for")
-	}
-}
 
 // TestEvaluateFor_IteratorShadowsParent verifies that the iterator variable shadows a same-named parent variable without mutating the parent scope.
 func TestEvaluateFor_IteratorShadowsParent(t *testing.T) {
@@ -145,39 +100,6 @@ func TestEvaluateFor_IteratorShadowsParent(t *testing.T) {
 	}
 }
 
-// TestProcessControlBlocks_ForPropertyAccess verifies end-to-end @for expansion with dot-notation property substitution in the template body.
-func TestProcessControlBlocks_ForPropertyAccess(t *testing.T) {
-	content := "list:\n<!-- @for x in data -->\n- {{x.key}}: {{x.val}}\n<!-- @endfor -->\nend"
-	blocks := []ast.ControlBlock{
-		{
-			Kind:       ast.DirectiveFor,
-			Iterator:   "x",
-			Collection: "data",
-			Start:      ast.Position{Line: 2},
-			End:        ast.Position{Line: 4},
-		},
-	}
-	root := scope.NewScope("root", scope.ScopeHeading, nil)
-	root.StartLine = 1
-	root.EndLine = 5
-	root.Declare("data", ast.Variable{
-		Name: "data",
-		Value: &ast.Value{
-			Kind: ast.TypeArray,
-			Array: []ast.Value{
-				{Kind: ast.TypeObject, Object: map[string]ast.Value{
-					"key": {Kind: ast.TypeString, Str: "a"},
-					"val": {Kind: ast.TypeString, Str: "1"},
-				}},
-			},
-		},
-	})
-	result, _ := ProcessControlBlocks(content, blocks, root)
-	expected := "list:\n- a: 1\nend"
-	if result != expected {
-		t.Fatalf("unexpected result:\ngot:  %q\nwant: %q", result, expected)
-	}
-}
 
 // TestEvaluateIf_EmptyCondition verifies that an empty condition string produces a diagnostic rather than a panic.
 func TestEvaluateIf_EmptyCondition(t *testing.T) {

@@ -371,7 +371,7 @@ func (ip *interpreter) handleIf(condition string) error {
 }
 
 func (ip *interpreter) handleFor(args string) error {
-	
+
 	currentScope := ip.currentScope()
 
 	// Parse "iterator in collection"
@@ -392,18 +392,29 @@ func (ip *interpreter) handleFor(args string) error {
 	ip.skipUntilEnd("endfor")
 	blockEnd := ip.pos // ip.pos points at @endfor line
 
-	blockLines := ip.lines[blockStart:blockEnd]
+	blockLines := make([]string, blockEnd-blockStart)
+	copy(blockLines, ip.lines[blockStart:blockEnd])
 
-	// Replay block for each iteration
+	// Replay block for each iteration using a sub-interpreter
 	for _, iter := range iterations {
-		for _, bline := range blockLines {
-			if parser.IsDirectiveLine(bline) {
-				continue // strip inner directives
-			}
-			processed := ip.substituteForLine(bline, iter, iterName)
-			if err := ip.writeLine(processed); err != nil {
-				return err
-			}
+		// Pre-substitute iterator references in block lines
+		substLines := make([]string, len(blockLines))
+		for i, bline := range blockLines {
+			substLines[i] = ip.substituteForLine(bline, iter, iterName)
+		}
+
+		subInterp := &interpreter{
+			lines:    substLines,
+			doc:      ip.doc,
+			ctx:      ip.ctx,
+			ws:       ip.ws,
+			writer:   ip.writer,
+			defaults: nil,
+			scopeStack: []*scope.Scope{iter.Scope},
+			inheritedVars: nil,
+		}
+		if err := subInterp.run(); err != nil {
+			return err
 		}
 	}
 

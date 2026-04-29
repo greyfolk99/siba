@@ -184,6 +184,15 @@ func main() {
 	}
 }
 
+func mustGetwd() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: cannot get working directory: %v\n", err)
+		os.Exit(1)
+	}
+	return cwd
+}
+
 func printUsage() {
 	fmt.Println("SIBA — Structured Ink for Building Archives")
 	fmt.Println()
@@ -329,7 +338,7 @@ func writeJSONError(v interface{}, errors interface{}) {
 }
 
 func runInit() {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	name := filepath.Base(cwd)
 
 	if _, err := os.Stat(filepath.Join(cwd, "module.toml")); err == nil {
@@ -355,7 +364,7 @@ func runExport(jsonMode bool) {
 	}
 
 	// Workspace render
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	w, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		if jsonMode {
@@ -405,8 +414,11 @@ func runCheck(path string, jsonMode bool) {
 	doc := parser.ParseDocument(path, string(source))
 
 	// also run validate with workspace context if available
-	cwd, _ := os.Getwd()
-	ws, _ := workspace.LoadWorkspace(cwd)
+	cwd := mustGetwd()
+	ws, wsErr := workspace.LoadWorkspace(cwd)
+	if wsErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
+	}
 	allDiags := doc.Diagnostics
 	allDiags = append(allDiags, validate.ValidateDocument(doc, ws)...)
 
@@ -477,7 +489,7 @@ func runCheck(path string, jsonMode bool) {
 }
 
 func runCheckWorkspace(jsonMode bool) {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	ws, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		if jsonMode {
@@ -586,7 +598,7 @@ func runCheckWorkspace(jsonMode bool) {
 }
 
 func runGet(pkgURL string, version string) {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	configPath := filepath.Join(cwd, "module.toml")
 	config, err := workspace.ParseModuleToml(configPath)
 	if err != nil {
@@ -604,7 +616,7 @@ func runGet(pkgURL string, version string) {
 }
 
 func runTidy() {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	w, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -633,7 +645,7 @@ func runTidy() {
 }
 
 func runScript(name string) {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	configPath := filepath.Join(cwd, "module.toml")
 	config, err := workspace.ParseModuleToml(configPath)
 	if err != nil {
@@ -666,30 +678,17 @@ func isPackageRef(s string) bool {
 }
 
 func extractPackageName(s string) string {
-	parts := splitPath(s)
+	raw := strings.Split(s, "/")
+	var parts []string
+	for _, p := range raw {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
 	if len(parts) >= 3 {
 		return parts[0] + "/" + parts[1] + "/" + parts[2]
 	}
 	return s
-}
-
-func splitPath(s string) []string {
-	var parts []string
-	current := ""
-	for _, c := range s {
-		if c == '/' {
-			if current != "" {
-				parts = append(parts, current)
-				current = ""
-			}
-		} else {
-			current += string(c)
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
 }
 
 // --- Read commands ---
@@ -727,8 +726,11 @@ func renderOrRaw(doc *ast.Document, symbol string, rawMode bool) string {
 			output = doc.Source
 		}
 	} else {
-		cwd, _ := os.Getwd()
-		ws, _ := workspace.LoadWorkspace(cwd)
+		cwd := mustGetwd()
+		ws, wsErr := workspace.LoadWorkspace(cwd)
+		if wsErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
+		}
 		var buf bytes.Buffer
 		if err := render.StreamRender(doc, &buf, ws); err != nil {
 			fmt.Fprintf(os.Stderr, "render error: %v\n", err)
@@ -778,8 +780,11 @@ func runCat(fileArg string, rawMode bool) {
 	}
 
 	// streaming render to stdout
-	cwd, _ := os.Getwd()
-	ws, _ := workspace.LoadWorkspace(cwd)
+	cwd := mustGetwd()
+	ws, wsErr := workspace.LoadWorkspace(cwd)
+	if wsErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
+	}
 	if err := render.StreamRender(doc, os.Stdout, ws); err != nil {
 		fmt.Fprintf(os.Stderr, "render error: %v\n", err)
 		os.Exit(1)
@@ -790,8 +795,11 @@ func runHead(fileArg string, n int, rawMode bool) {
 	doc, symbol := loadAndParse(fileArg)
 	if !rawMode && symbol == "" {
 		// streaming with line limit
-		cwd, _ := os.Getwd()
-		ws, _ := workspace.LoadWorkspace(cwd)
+		cwd := mustGetwd()
+		ws, wsErr := workspace.LoadWorkspace(cwd)
+		if wsErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
+		}
 		lw := &lineWriter{w: os.Stdout, limit: n}
 		render.StreamRender(doc, lw, ws)
 		return
@@ -807,8 +815,11 @@ func runHead(fileArg string, n int, rawMode bool) {
 func runHeadBytes(fileArg string, c int, rawMode bool) {
 	doc, symbol := loadAndParse(fileArg)
 	if !rawMode && symbol == "" {
-		cwd, _ := os.Getwd()
-		ws, _ := workspace.LoadWorkspace(cwd)
+		cwd := mustGetwd()
+		ws, wsErr := workspace.LoadWorkspace(cwd)
+		if wsErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
+		}
 		bw := &byteWriter{w: os.Stdout, limit: c}
 		render.StreamRender(doc, bw, ws)
 		return
@@ -844,8 +855,11 @@ func runTail(fileArg string, n int, rawMode bool) {
 	doc, symbol := loadAndParse(fileArg)
 	if !rawMode && symbol == "" {
 		// streaming with ring buffer
-		cwd, _ := os.Getwd()
-		ws, _ := workspace.LoadWorkspace(cwd)
+		cwd := mustGetwd()
+		ws, wsErr := workspace.LoadWorkspace(cwd)
+		if wsErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
+		}
 		tw := &tailWriter{limit: n}
 		render.StreamRender(doc, tw, ws)
 		for _, line := range tw.Lines() {
@@ -905,19 +919,16 @@ type lineWriter struct {
 }
 
 func (lw *lineWriter) Write(p []byte) (int, error) {
-	if lw.count >= lw.limit {
-		return len(p), nil // discard
-	}
 	for _, b := range p {
+		if lw.count >= lw.limit {
+			return len(p), nil
+		}
 		if b == '\n' {
 			lw.count++
-			if lw.count >= lw.limit {
-				lw.w.Write([]byte{'\n'})
-				return len(p), nil
-			}
 		}
+		lw.w.Write([]byte{b})
 	}
-	return lw.w.Write(p)
+	return len(p), nil
 }
 
 // --- Search commands ---
@@ -939,7 +950,7 @@ type JSONSymbolInfo struct {
 func runLs(fileArg string, jsonMode bool) {
 	if fileArg == "" {
 		// list all documents in workspace
-		cwd, _ := os.Getwd()
+		cwd := mustGetwd()
 		ws, err := workspace.LoadWorkspace(cwd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -1060,7 +1071,7 @@ func runTreeHeadings(fileArg string, jsonMode bool) {
 	}
 
 	// workspace-wide heading overview
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	ws, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -1109,7 +1120,7 @@ func printHeadingTree(headings []*ast.Heading, indent string) {
 }
 
 func runTreeDeps(jsonMode bool, dotMode bool) {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	ws, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -1273,7 +1284,7 @@ type JSONFindResult struct {
 }
 
 func runFind(query string, headingOnly bool, variableOnly bool, jsonMode bool) {
-	cwd, _ := os.Getwd()
+	cwd := mustGetwd()
 	ws, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

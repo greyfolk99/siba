@@ -24,13 +24,14 @@ func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnost
 		if tmplDiag != nil {
 			diags = append(diags, *tmplDiag)
 		}
-		if tmpl != nil {
-			doc.Variables = template.InheritVariables(doc, tmpl)
-		}
 	}
 
-	// 1. Build scope tree (catches duplicate declarations, const shadowing)
-	rootScope, scopeDiags := scope.BuildScopeTree(doc)
+	// 1. Build scope tree using inherited variables (without mutating doc.Variables)
+	mergedVars := doc.Variables
+	if tmpl != nil {
+		mergedVars = template.InheritVariables(doc, tmpl)
+	}
+	rootScope, scopeDiags := scope.BuildScopeTreeWithVars(doc, mergedVars)
 	diags = append(diags, scopeDiags...)
 
 	// 2. Validate references — skip refs inside @for/@if blocks that use iterator vars
