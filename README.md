@@ -134,8 +134,9 @@ POST /v1/payments ...
 ### Access Control
 
 ```markdown
-<!-- @const service-name = "identity" -->              public (default)
-<!-- @const private db-password = "secret" -->          this document only
+<!-- @const version = "1.0" -->                        file level = module export
+<!-- @const service-name = "identity" -->               inside @doc/@template = inherited by @extends
+<!-- @const private db-password = "secret" -->           private = not inherited
 ```
 
 ### Reference Syntax
