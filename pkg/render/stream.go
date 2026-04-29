@@ -33,32 +33,31 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 	}
 	defer ctx.Leave(docKey)
 
-	// Apply template inheritance
+	// Apply template inheritance (lightweight — no parsing, just variable/heading merge)
 	var defaults []defaultSection
 	if ws != nil && doc.ExtendsName != "" {
 		tmplDoc, _ := template.ResolveTemplate(doc, ws)
 		if tmplDoc != nil {
 			tmplLines := strings.Split(tmplDoc.Source, "\n")
-			// Build default plan BEFORE merging (uses original child headings)
 			defaults = buildDefaultPlan(doc, tmplDoc, tmplLines)
 			doc.Variables = template.InheritVariables(doc, tmplDoc)
-			doc.Headings = template.MergeHeadings(doc, tmplDoc)
 		}
 	}
 
-	// Phase 1: Build scope tree (hoists variables to correct scopes)
-	rootScope, _ := scope.BuildScopeTree(doc)
-
-	// Phase 2: Line-by-line streaming
+	// Pure interpreter — no Phase 0 scope tree build
+	// Scope is built on-the-fly as headings and variables are encountered
 	lines := strings.Split(doc.Source, "\n")
 	interp := &interpreter{
-		lines:     lines,
-		rootScope: rootScope,
-		doc:       doc,
-		ctx:       ctx,
-		ws:        ws,
-		writer:    w,
-		defaults:  defaults,
+		lines:    lines,
+		doc:      doc,
+		ctx:      ctx,
+		ws:       ws,
+		writer:   w,
+		defaults: defaults,
+		scopeStack: []*scope.Scope{
+			scope.NewScope("__root__", scope.ScopeHeading, nil),
+		},
+		inheritedVars: doc.Variables, // from template inheritance
 	}
 
 	return interp.run()
@@ -142,24 +141,57 @@ func buildDefaultPlan(child, tmpl *ast.Document, tmplLines []string) []defaultSe
 }
 
 // interpreter is the line-by-line streaming render engine.
+// Pure interpreter — scope built on-the-fly, no pre-parsing phase.
 type interpreter struct {
-	lines     []string
-	rootScope *scope.Scope
-	doc       *ast.Document
-	ctx       *EvalContext
-	ws        *workspace.Workspace
-	writer    io.Writer
-	pos       int // current line index (0-based)
-	defaults  []defaultSection
-	lastSlug  string // slug of the last heading we passed
+	lines         []string
+	doc           *ast.Document
+	ctx           *EvalContext
+	ws            *workspace.Workspace
+	writer        io.Writer
+	pos           int // current line index (0-based)
+	defaults      []defaultSection
+	lastSlug      string // slug of the last heading we passed
+	scopeStack    []*scope.Scope
+	headingLevels []int // heading level stack (parallel to scopeStack for heading scopes)
+	inheritedVars []ast.Variable
+	varsRegistered bool // whether inherited vars have been registered
+}
+
+func (ip *interpreter) currentScope() *scope.Scope {
+	return ip.scopeStack[len(ip.scopeStack)-1]
+}
+
+func (ip *interpreter) pushScope(name string, kind scope.ScopeKind) *scope.Scope {
+	s := scope.NewScope(name, kind, ip.currentScope())
+	ip.scopeStack = append(ip.scopeStack, s)
+	return s
+}
+
+func (ip *interpreter) popScope() {
+	if len(ip.scopeStack) > 1 {
+		ip.scopeStack = ip.scopeStack[:len(ip.scopeStack)-1]
+	}
+}
+
+// popToHeadingLevel pops scopes until we're at the right level for a new heading
+func (ip *interpreter) popToHeadingLevel(level int) {
+	for len(ip.headingLevels) > 0 && ip.headingLevels[len(ip.headingLevels)-1] >= level {
+		ip.headingLevels = ip.headingLevels[:len(ip.headingLevels)-1]
+		ip.popScope()
+	}
 }
 
 func (ip *interpreter) run() error {
+	// Register inherited variables in root scope
+	for _, v := range ip.inheritedVars {
+		ip.currentScope().Declare(v.Name, v)
+	}
+
 	for ip.pos < len(ip.lines) {
 		line := ip.lines[ip.pos]
 		trimmed := strings.TrimSpace(line)
 
-		// Directive line — check for control flow
+		// Directive line — handle variable declarations and control flow
 		if parser.IsDirectiveLine(line) {
 			if err := ip.handleDirective(trimmed); err != nil {
 				return err
@@ -168,7 +200,7 @@ func (ip *interpreter) run() error {
 			continue
 		}
 
-		// Check multi-line directive start
+		// Multi-line directive — skip
 		if strings.Contains(trimmed, "<!--") && strings.Contains(trimmed, "@") && !strings.Contains(trimmed, "-->") {
 			ip.pos++
 			for ip.pos < len(ip.lines) {
@@ -181,7 +213,7 @@ func (ip *interpreter) run() error {
 			continue
 		}
 
-		// If this is a heading line, track slug and check @default injections
+		// Heading line — manage scope on-the-fly
 		if strings.HasPrefix(trimmed, "#") {
 			level := 0
 			for _, c := range trimmed {
@@ -194,26 +226,29 @@ func (ip *interpreter) run() error {
 			headingText := strings.TrimSpace(trimmed[level:])
 			slug := parser.GenerateSlug(headingText)
 
-			// H2+ — check for @default injections before this heading
 			if level >= 2 {
+				// @default injection before this heading
 				if err := ip.emitPendingDefaults(slug); err != nil {
 					return err
 				}
 				ip.lastSlug = slug
+
+				// Pop scopes back to parent level, then push new scope
+				ip.popToHeadingLevel(level)
+				ip.pushScope(slug, scope.ScopeHeading)
+				ip.headingLevels = append(ip.headingLevels, level)
 			}
 		}
 
-		// Normal text line — substitute variables and write
-		lineNo := ip.pos + 1
-		currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
-		processed := ip.substituteVars(line, currentScope)
+		// Normal text — substitute variables using current scope and write
+		processed := ip.substituteVars(line, ip.currentScope())
 		if err := ip.writeLine(processed); err != nil {
 			return err
 		}
 		ip.pos++
 	}
 
-	// Emit any remaining @default sections at the end
+	// Emit remaining @default sections
 	return ip.emitPendingDefaults("")
 }
 
@@ -244,29 +279,81 @@ func (ip *interpreter) emitPendingDefaults(nextSlug string) error {
 }
 
 func (ip *interpreter) handleDirective(trimmed string) error {
-	// Parse to check if it's @if or @for
 	matches := directiveCheckRe.FindStringSubmatch(trimmed)
 	if matches == nil {
-		// Not a recognized control directive — just skip (strip)
 		return nil
 	}
 
 	keyword := matches[1]
+	args := strings.TrimSpace(matches[2])
 
 	switch keyword {
 	case "if":
-		return ip.handleIf(matches[2])
+		return ip.handleIf(args)
 	case "for":
-		return ip.handleFor(matches[2])
+		return ip.handleFor(args)
+	case "const", "let":
+		// Register variable in current scope on-the-fly
+		ip.registerVar(keyword, args)
+		return nil
 	default:
-		// Other directives (@doc, @const, etc.) are stripped
+		// @doc, @template, @extends, @import, @name, @default, @endif, @endfor — strip
 		return nil
 	}
 }
 
+// registerVar parses and registers a variable declaration in the current scope
+func (ip *interpreter) registerVar(keyword, args string) {
+	// Normalize multiline
+	args = strings.Join(strings.Fields(args), " ")
+
+	mut := ast.MutConst
+	if keyword == "let" {
+		mut = ast.MutLet
+	}
+
+	// Parse: [private] name [: type] = value
+	access := ast.AccessDefault
+	if strings.HasPrefix(args, "private ") {
+		access = ast.AccessPrivate
+		args = strings.TrimPrefix(args, "private ")
+		args = strings.TrimSpace(args)
+	}
+
+	// Split name = value
+	eqIdx := strings.Index(args, "=")
+	if eqIdx < 0 {
+		return // type-only declaration, no value
+	}
+
+	namePart := strings.TrimSpace(args[:eqIdx])
+	valPart := strings.TrimSpace(args[eqIdx+1:])
+
+	// Strip type annotation from name (name: type → name)
+	if colonIdx := strings.Index(namePart, ":"); colonIdx >= 0 {
+		namePart = strings.TrimSpace(namePart[:colonIdx])
+	}
+
+	val, err := parser.ParseValue(valPart)
+	if err != nil {
+		return
+	}
+
+	v := ast.Variable{
+		Name:       namePart,
+		Mutability: mut,
+		Access:     access,
+		Value:      &val,
+		Type:       parser.InferType(val),
+		Position:   ast.Position{Line: ip.pos + 1},
+	}
+
+	ip.currentScope().Declare(namePart, v)
+}
+
 func (ip *interpreter) handleIf(condition string) error {
-	lineNo := ip.pos + 1
-	currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+	
+	currentScope := ip.currentScope()
 
 	result, _ := control.EvaluateIf(condition, currentScope)
 
@@ -282,8 +369,8 @@ func (ip *interpreter) handleIf(condition string) error {
 }
 
 func (ip *interpreter) handleFor(args string) error {
-	lineNo := ip.pos + 1
-	currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+	
+	currentScope := ip.currentScope()
 
 	// Parse "iterator in collection"
 	parts := strings.SplitN(strings.TrimSpace(args), " in ", 2)
@@ -358,8 +445,8 @@ func (ip *interpreter) processUntilEnd(endKeyword string) error {
 			continue
 		}
 
-		lineNo := ip.pos + 1
-		currentScope := scope.FindScopeForLine(ip.rootScope, lineNo)
+		
+		currentScope := ip.currentScope()
 		processed := ip.substituteVars(line, currentScope)
 		if err := ip.writeLine(processed); err != nil {
 			return err
