@@ -305,7 +305,7 @@ func TestInheritVariables_PublicInherited(t *testing.T) {
 	}
 	child := &ast.Document{Variables: nil}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 var, got %d", len(result))
 	}
@@ -323,7 +323,7 @@ func TestInheritVariables_PrivateExcluded(t *testing.T) {
 	}
 	child := &ast.Document{Variables: nil}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 0 {
 		t.Fatalf("expected 0 vars, got %d", len(result))
 	}
@@ -338,7 +338,7 @@ func TestInheritVariables_ProtectedInherited(t *testing.T) {
 	}
 	child := &ast.Document{Variables: nil}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 var, got %d", len(result))
 	}
@@ -357,7 +357,7 @@ func TestInheritVariables_ChildOverrides(t *testing.T) {
 		},
 	}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 var, got %d", len(result))
 	}
@@ -377,7 +377,7 @@ func TestInheritVariables_MixedAccess(t *testing.T) {
 	}
 	child := &ast.Document{Variables: nil}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 vars (pub+prot), got %d", len(result))
 	}
@@ -406,7 +406,7 @@ func TestInheritVariables_ChildFirst(t *testing.T) {
 		},
 	}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 vars, got %d", len(result))
 	}
@@ -424,7 +424,7 @@ func TestInheritVariables_BothEmpty(t *testing.T) {
 	tmpl := &ast.Document{Variables: nil}
 	child := &ast.Document{Variables: nil}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 0 {
 		t.Fatalf("expected 0 vars, got %d", len(result))
 	}

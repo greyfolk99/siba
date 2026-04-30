@@ -175,7 +175,7 @@ func TestInheritVariables_MultipleOverrides(t *testing.T) {
 		},
 	}
 
-	result := InheritVariables(child, tmpl)
+	result, _ := InheritVariables(child, tmpl)
 	if len(result) != 3 {
 		t.Fatalf("expected 3 vars, got %d", len(result))
 	}

@@ -29,7 +29,9 @@ func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnost
 	// 1. Build scope tree using inherited variables (without mutating doc.Variables)
 	mergedVars := doc.Variables
 	if tmpl != nil {
-		mergedVars = template.InheritVariables(doc, tmpl)
+		var inheritDiags []ast.Diagnostic
+		mergedVars, inheritDiags = template.InheritVariables(doc, tmpl)
+		diags = append(diags, inheritDiags...)
 	}
 	rootScope, scopeDiags := scope.BuildScopeTreeWithVars(doc, mergedVars)
 	diags = append(diags, scopeDiags...)

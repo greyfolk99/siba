@@ -42,7 +42,7 @@ func StreamRenderWithContext(doc *ast.Document, w io.Writer, ctx *EvalContext, w
 		if tmplDoc != nil {
 			tmplLines := strings.Split(tmplDoc.Source, "\n")
 			defaults = buildDefaultPlan(doc, tmplDoc, tmplLines)
-			inheritedVars = template.InheritVariables(doc, tmplDoc)
+			inheritedVars, _ = template.InheritVariables(doc, tmplDoc)
 		}
 	}
 

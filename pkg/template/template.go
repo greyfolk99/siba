@@ -159,34 +159,48 @@ func matchesHeading(h, target *ast.Heading) bool {
 }
 
 // InheritVariables returns variables from template that should be inherited by child.
-// Public and protected variables are inherited.
-// Private variables are excluded.
-// Child variables with the same name override inherited ones.
-func InheritVariables(child, tmpl *ast.Document) []ast.Variable {
-	// collect child variable names for override detection
+// Non-private variables are inherited. Private variables are excluded.
+// Child variables with the same name override inherited ones (unless private).
+// Returns (merged variables, diagnostics for private override attempts).
+func InheritVariables(child, tmpl *ast.Document) ([]ast.Variable, []ast.Diagnostic) {
+	// Build map of private template variable names
+	privateVars := make(map[string]bool)
+	for _, v := range tmpl.Variables {
+		if v.Access == ast.AccessPrivate {
+			privateVars[v.Name] = true
+		}
+	}
+
+	// Check child doesn't override private variables
+	var diags []ast.Diagnostic
 	childVars := make(map[string]bool)
 	for _, v := range child.Variables {
 		childVars[v.Name] = true
+		if privateVars[v.Name] {
+			diags = append(diags, ast.Diagnostic{
+				Severity: ast.SeverityError,
+				Code:     "E074",
+				Message:  fmt.Sprintf("cannot override private variable: %s", v.Name),
+				Range:    ast.Range{Start: v.Position, End: v.Position},
+			})
+		}
 	}
 
 	var inherited []ast.Variable
 	for _, v := range tmpl.Variables {
-		// skip private variables
 		if v.Access == ast.AccessPrivate {
 			continue
 		}
-		// skip if child overrides
 		if childVars[v.Name] {
 			continue
 		}
 		inherited = append(inherited, v)
 	}
 
-	// return child's own vars + inherited (child first = higher priority in scope)
 	result := make([]ast.Variable, 0, len(child.Variables)+len(inherited))
 	result = append(result, child.Variables...)
 	result = append(result, inherited...)
-	return result
+	return result, diags
 }
 
 // MergeHeadings merges template headings with child headings.
