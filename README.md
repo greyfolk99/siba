@@ -139,16 +139,30 @@ POST /v1/payments ...
 <!-- @const private db-password = "secret" -->           private = not inherited
 ```
 
+### Import
+
+```markdown
+<!-- @import specs from ./templates/specs.md -->
+```
+
+External references require `@import`. The alias is used to access variables and symbols.
+
 ### Reference Syntax
 
 ```markdown
-{{variable}}                   Local variable
-{{#section}}                   Section in same document
-{{payment-api}}                Another document (by @doc name)
-{{payment-api#overview}}       Section in another document
-{{payment-api.version}}        Variable in another document
-{{services/payment-api}}       Document by file path
-\{{literal}}                   Escaped (outputs {{literal}})
+Local:
+{{variable}}                   Local variable (scope chain)
+{{config.timeout}}             Object property
+{{#section}}                   Current file symbol (heading/doc/template)
+{{#parent/child}}              Nested symbol
+
+External (@import required):
+{{alias.variable}}             Module-level variable from imported file
+{{alias#symbol}}               Symbol from imported file
+{{alias#parent/child}}         Nested symbol from imported file
+
+Escape:
+\{{literal}}                   Not expanded
 ```
 
 ### Packages
