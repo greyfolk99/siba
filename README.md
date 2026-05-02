@@ -106,8 +106,7 @@ Default changelog content.
 ```
 
 ```markdown
-<!-- @doc payment-api -->
-<!-- @extends api-spec -->
+<!-- @doc PaymentApi extends ApiSpec -->
 # Payment API
 ## Endpoints
 POST /v1/payments ...
