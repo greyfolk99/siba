@@ -262,11 +262,18 @@ type DependencyGraph struct {
 	Edges map[string][]string // doc name → list of referenced doc names
 }
 
-// BuildDependencyGraph builds a dependency graph from a workspace
-func BuildDependencyGraph(ws *workspace.Workspace) DependencyGraph {
-	g := DependencyGraph{
-		Edges: make(map[string][]string),
-	}
+// DependencyGraphs holds two graphs: one for @extends edges (E060 cycles) and
+// one for {{}} embed edges (E022 cycles). [[]] link refs are excluded — link
+// cycles are intentionally allowed.
+type DependencyGraphs struct {
+	Extends DependencyGraph
+	Embed   DependencyGraph
+}
+
+// BuildDependencyGraphs builds the extends + embed dependency graphs.
+func BuildDependencyGraphs(ws *workspace.Workspace) DependencyGraphs {
+	gExt := DependencyGraph{Edges: make(map[string][]string)}
+	gEmb := DependencyGraph{Edges: make(map[string][]string)}
 
 	for _, doc := range ws.DocsByPath {
 		docID := doc.Path
@@ -274,36 +281,77 @@ func BuildDependencyGraph(ws *workspace.Workspace) DependencyGraph {
 			docID = doc.Name
 		}
 
-		var deps []string
-
-		// @extends creates a dependency
 		if doc.ExtendsName != "" {
-			deps = append(deps, doc.ExtendsName)
+			gExt.Edges[docID] = append(gExt.Edges[docID], doc.ExtendsName)
 		}
 
-		// {{doc-name}} references create dependencies
 		for _, ref := range doc.References {
-			if ref.IsEscaped {
+			if ref.IsEscaped || ref.IsLink {
 				continue
 			}
-			if ref.PathPart != "" && !strings.Contains(ref.PathPart, "/") {
-				// could be a doc reference
+			if ref.PathPart == "" {
+				continue
+			}
+			// alias resolution — {{alias}} or {{alias#section}} pulls in the imported doc
+			for _, imp := range doc.Imports {
+				if imp.Alias == ref.PathPart {
+					target := ws.ResolveImportDoc(imp.Path, doc.Path)
+					if target != nil {
+						targetID := target.Path
+						if target.Name != "" {
+							targetID = target.Name
+						}
+						gEmb.Edges[docID] = append(gEmb.Edges[docID], targetID)
+					}
+				}
+			}
+			// plain {{doc-name}} that names a workspace doc directly
+			if !strings.Contains(ref.PathPart, "/") {
 				if ws.GetDocument(ref.PathPart) != nil {
-					deps = append(deps, ref.PathPart)
+					gEmb.Edges[docID] = append(gEmb.Edges[docID], ref.PathPart)
 				}
 			}
 		}
-
-		if len(deps) > 0 {
-			g.Edges[docID] = deps
-		}
 	}
+	return DependencyGraphs{Extends: gExt, Embed: gEmb}
+}
 
+// BuildDependencyGraph is the legacy single-graph entry point — kept for
+// backward compatibility. It returns a graph that combines both extends and
+// embed edges (matching the pre-spec-v4 behavior).
+//
+// Deprecated: use BuildDependencyGraphs(ws).Extends / .Embed instead.
+func BuildDependencyGraph(ws *workspace.Workspace) DependencyGraph {
+	graphs := BuildDependencyGraphs(ws)
+	g := DependencyGraph{Edges: make(map[string][]string)}
+	for k, v := range graphs.Extends.Edges {
+		g.Edges[k] = append(g.Edges[k], v...)
+	}
+	for k, v := range graphs.Embed.Edges {
+		g.Edges[k] = append(g.Edges[k], v...)
+	}
 	return g
 }
 
-// DetectCycles finds circular references in the dependency graph
+// DetectExtendsCycles emits E060 for cycles in the @extends graph.
+func DetectExtendsCycles(g DependencyGraph) []ast.Diagnostic {
+	return detectCyclesWithCode(g, "E060", "circular reference detected")
+}
+
+// DetectEmbedCycles emits E022 for cycles in the {{}} embed graph.
+func DetectEmbedCycles(g DependencyGraph) []ast.Diagnostic {
+	return detectCyclesWithCode(g, "E022", "circular embed detected")
+}
+
+// DetectCycles is the legacy single-graph entry point — kept for backward
+// compatibility. Emits E060 for any cycle found in the combined graph.
+//
+// Deprecated: use DetectExtendsCycles / DetectEmbedCycles instead.
 func DetectCycles(g DependencyGraph) []ast.Diagnostic {
+	return DetectExtendsCycles(g)
+}
+
+func detectCyclesWithCode(g DependencyGraph, code, label string) []ast.Diagnostic {
 	var diags []ast.Diagnostic
 
 	visited := make(map[string]bool)
@@ -316,20 +364,18 @@ func DetectCycles(g DependencyGraph) []ast.Diagnostic {
 
 		for _, dep := range g.Edges[node] {
 			if !visited[dep] {
-				// copy path to avoid slice aliasing
 				newPath := make([]string, len(path)+1)
 				copy(newPath, path)
 				newPath[len(path)] = dep
 				dfs(dep, newPath)
 			} else if inStack[dep] {
-				// cycle found — copy path for safe append
 				cyclePath := make([]string, len(path)+1)
 				copy(cyclePath, path)
 				cyclePath[len(path)] = dep
 				diags = append(diags, ast.Diagnostic{
 					Severity: ast.SeverityError,
-					Code:     "E060",
-					Message:  fmt.Sprintf("circular reference detected: %s", strings.Join(cyclePath, " → ")),
+					Code:     code,
+					Message:  fmt.Sprintf("%s: %s", label, strings.Join(cyclePath, " → ")),
 				})
 			}
 		}
