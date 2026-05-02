@@ -233,3 +233,44 @@ B: {{mode}}`
 		t.Errorf("expected Section B to have mode=beta, got:\n%s", output)
 	}
 }
+
+// TestStreamRender_Link verifies that [[alias]] compiles to a markdown link
+// using the @import path. [[alice]] with @import alice from ./alice.md → [alice](./alice.md)
+func TestStreamRender_Link(t *testing.T) {
+	src := `<!-- @import alice from ./alice.md -->
+
+<!-- @doc index -->
+# Index
+
+See [[alice]] for details.`
+	doc := parser.ParseDocument("index.md", src)
+
+	var buf bytes.Buffer
+	if err := StreamRender(doc, &buf, nil); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[alice](./alice.md)") {
+		t.Errorf("expected [alice](./alice.md) in output, got:\n%s", out)
+	}
+}
+
+// TestStreamRender_LinkWithSection verifies [[alias#section]] compiles with anchor.
+func TestStreamRender_LinkWithSection(t *testing.T) {
+	src := `<!-- @import api from ./api.md -->
+
+<!-- @doc index -->
+# Index
+
+[[api#endpoints]]`
+	doc := parser.ParseDocument("index.md", src)
+
+	var buf bytes.Buffer
+	if err := StreamRender(doc, &buf, nil); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[api#endpoints](./api.md#endpoints)") {
+		t.Errorf("expected [api#endpoints](./api.md#endpoints), got:\n%s", out)
+	}
+}
