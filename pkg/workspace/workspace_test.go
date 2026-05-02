@@ -120,27 +120,41 @@ func TestResolveImportDoc(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Resolve by @doc name
-	doc := ws.ResolveImportDoc("my-doc")
+	// Resolve by @doc name (no fromPath)
+	doc := ws.ResolveImportDoc("my-doc", "")
 	if doc == nil {
 		t.Fatal("expected to resolve 'my-doc' by name")
 	}
 
-	// Resolve by relative path with .md
-	doc = ws.ResolveImportDoc("sub/page.md")
+	// Resolve by workspace-relative path with .md
+	doc = ws.ResolveImportDoc("sub/page.md", "")
 	if doc == nil {
 		t.Fatal("expected to resolve 'sub/page.md' by path")
 	}
 
-	// Resolve by relative path without .md
-	doc = ws.ResolveImportDoc("sub/page")
+	// Resolve by workspace-relative path without .md
+	doc = ws.ResolveImportDoc("sub/page", "")
 	if doc == nil {
 		t.Fatal("expected to resolve 'sub/page' by path without extension")
 	}
 
 	// Non-existent should return nil
-	doc = ws.ResolveImportDoc("nonexistent")
+	doc = ws.ResolveImportDoc("nonexistent", "")
 	if doc != nil {
 		t.Error("expected nil for non-existent import")
+	}
+
+	// Resolve relative to fromPath: sibling file (fromPath is workspace-relative)
+	siblingMd := "<!-- @doc sibling -->\n# Sibling"
+	if err := os.WriteFile(filepath.Join(dir, "sub", "sibling.md"), []byte(siblingMd), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ws, _ = LoadWorkspace(dir)
+	doc = ws.ResolveImportDoc("./sibling.md", filepath.Join("sub", "page.md"))
+	if doc == nil {
+		t.Fatal("expected to resolve './sibling.md' relative to fromPath")
+	}
+	if doc.Name != "sibling" {
+		t.Errorf("expected sibling doc, got %s", doc.Name)
 	}
 }

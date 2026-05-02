@@ -61,7 +61,7 @@ func ResolveReference(ref ast.Reference, currentDoc *ast.Document, rootScope *sc
 		if currentDoc != nil && ws != nil {
 			for _, imp := range currentDoc.Imports {
 				if imp.Alias == ref.PathPart {
-					targetDoc := ws.ResolveImportDoc(imp.Path)
+					targetDoc := ws.ResolveImportDoc(imp.Path, currentDoc.Path)
 					if targetDoc != nil {
 						for i, tv := range targetDoc.Variables {
 							if tv.Name == ref.Variable && tv.Access != ast.AccessPrivate && tv.Value != nil {
@@ -171,7 +171,7 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 
 		// resolve import path to document via workspace
 		if ws != nil {
-			targetDoc = ws.ResolveImportDoc(importPath)
+			targetDoc = ws.ResolveImportDoc(importPath, currentDoc.Path)
 		}
 		if targetDoc == nil {
 			return nil, &ast.Diagnostic{
