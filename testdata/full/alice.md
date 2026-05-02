@@ -1,5 +1,4 @@
-<!-- @doc alice -->
-<!-- @extends employee -->
+<!-- @doc alice extends employee -->
 <!-- @const name = "Alice" -->
 <!-- @const role = "Engineer" -->
 <!-- @const private salary = "confidential" -->

@@ -142,13 +142,14 @@ type Heading struct {
 	Position   Position
 }
 
-// Reference represents a {{}} reference
+// Reference represents a {{}} embed or [[]] link reference.
 type Reference struct {
 	Raw       string
 	PathPart  string // before #
 	Section   string // after #, before .
 	Variable  string // after .
-	IsEscaped bool   // \{{ prefix
+	IsEscaped bool   // \{{ or \[[ prefix
+	IsLink    bool   // true for [[]] (link), false for {{}} (embed)
 	Position  Position
 }
 

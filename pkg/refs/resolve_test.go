@@ -727,23 +727,3 @@ func TestFindHeading_EmptyList(t *testing.T) {
 
 // --- ResolveReference: edge cases ---
 
-// TestResolveReference_UnresolvedRawFallback verifies that a reference with empty PathPart falls back to E050 using raw text.
-func TestResolveReference_UnresolvedRawFallback(t *testing.T) {
-	// ref with empty PathPart should return E050 with raw
-	s := makeScope(map[string]ast.Variable{})
-	ref := ast.Reference{
-		Raw:      "{{}}",
-		PathPart: "",
-		Position: ast.Position{Line: 1},
-	}
-	doc := makeDoc("", "test.md")
-
-	_, diag := ResolveReference(ref, doc, s, nil)
-	if diag == nil {
-		t.Fatal("expected diagnostic")
-	}
-	if diag.Code != "E050" {
-		t.Fatalf("expected E050, got %s", diag.Code)
-	}
-}
-

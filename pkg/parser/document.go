@@ -9,10 +9,13 @@ import (
 )
 
 var (
-	refRe        = regexp.MustCompile(`(?:\\)?\{\{([^}]+)\}\}`)
-	varDeclRe    = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*(?::\s*(.+?))?\s*=\s*(.+)$`)
+	refRe         = regexp.MustCompile(`(?:\\)?\{\{([^}]+)\}\}`)
+	linkRe        = regexp.MustCompile(`(?:\\)?\[\[([^\]]+)\]\]`)
+	varDeclRe     = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*(?::\s*(.+?))?\s*=\s*(.+)$`)
 	varTypeDeclRe = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*:\s*(.+)$`)
-	forRe        = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
+	forRe         = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
+	aliasRe       = regexp.MustCompile(`^[A-Za-z_][\w-]*$`)
+	pascalRe      = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 )
 
 // ParseDocuments parses a file that may contain multiple @template/@doc declarations.
@@ -30,9 +33,11 @@ func ParseDocuments(path string, source string) []*ast.Document {
 	var decls []declInfo
 	for _, d := range directives {
 		if d.Kind == ast.DirectiveTemplate {
-			decls = append(decls, declInfo{line: d.Position.Line, name: strings.TrimSpace(d.Args), isTemplate: true})
+			nm, _ := parseDocArgs(d.Args)
+			decls = append(decls, declInfo{line: d.Position.Line, name: nm, isTemplate: true})
 		} else if d.Kind == ast.DirectiveDoc {
-			decls = append(decls, declInfo{line: d.Position.Line, name: strings.TrimSpace(d.Args), isTemplate: false})
+			nm, _ := parseDocArgs(d.Args)
+			decls = append(decls, declInfo{line: d.Position.Line, name: nm, isTemplate: false})
 		}
 	}
 
@@ -92,9 +97,17 @@ func ParseDocument(path string, source string) *ast.Document {
 	// Parse directives
 	doc.Directives = ParseDirectives(source)
 
-	// Extract document metadata
-	doc.Name, doc.IsTemplate = extractDocMeta(doc.Directives)
-	doc.ExtendsName = extractExtends(doc.Directives)
+	// Extract document metadata (name + isTemplate + modifier-extends)
+	modifierExtends := ""
+	doc.Name, doc.IsTemplate, modifierExtends = extractDocMeta(doc.Directives)
+	directiveExtends := extractExtends(doc.Directives)
+	doc.ExtendsName = mergeExtends(modifierExtends, directiveExtends)
+	if diag := validateExtendsConflict(modifierExtends, directiveExtends, doc.Directives); diag != nil {
+		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
+	if diag := validateExtendsDeprecation(directiveExtends, doc.Directives); diag != nil {
+		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
 	doc.Imports = extractImports(doc.Directives)
 
 	// Validate @doc + @template exclusivity
@@ -127,6 +140,12 @@ func ParseDocument(path string, source string) *ast.Document {
 	attachNamesToHeadings(flatHeadings, doc.Directives)
 	doc.Headings = BuildHeadingTree(flatHeadings)
 
+	// E007: file-prelude rule — @import/@const/@let must be in the prelude
+	doc.Diagnostics = append(doc.Diagnostics, validateFilePrelude(doc.Directives, flatHeadings)...)
+
+	// I002: PascalCase recommendation for @doc/@template (info only)
+	doc.Diagnostics = append(doc.Diagnostics, validatePascalCase(doc.Directives)...)
+
 	// Calculate content ranges
 	lines := strings.Split(source, "\n")
 	calculateContentRanges(flatHeadings, len(lines))
@@ -134,8 +153,9 @@ func ParseDocument(path string, source string) *ast.Document {
 	// Extract variables
 	doc.Variables = extractVariables(doc.Directives)
 
-	// Extract references
+	// Extract references (both {{}} embed and [[]] link)
 	doc.References = extractReferences(source)
+	doc.Diagnostics = append(doc.Diagnostics, validateRefsAreAliasOnly(doc.References, doc.Imports)...)
 
 	// Extract control blocks
 	blocks, diags := extractControlBlocks(doc.Directives)
@@ -145,21 +165,86 @@ func ParseDocument(path string, source string) *ast.Document {
 	return doc
 }
 
-// extractDocMeta returns (name, isTemplate) from @doc or @template directives.
-// @template name → name from template, isTemplate=true
-// @doc name → name from doc, isTemplate=false
-func extractDocMeta(directives []ast.Directive) (string, bool) {
+// extractDocMeta returns (name, isTemplate, extendsName) from @doc or @template
+// directives. Supports modifier syntax: "@doc Name extends Parent" or
+// "@template Name extends Parent". Modifier extends suffix is optional.
+func extractDocMeta(directives []ast.Directive) (string, bool, string) {
 	for _, d := range directives {
 		if d.Kind == ast.DirectiveTemplate {
-			return strings.TrimSpace(d.Args), true
+			name, parent := parseDocArgs(d.Args)
+			return name, true, parent
 		}
 	}
 	for _, d := range directives {
 		if d.Kind == ast.DirectiveDoc {
-			return strings.TrimSpace(d.Args), false
+			name, parent := parseDocArgs(d.Args)
+			return name, false, parent
 		}
 	}
-	return "", false
+	return "", false, ""
+}
+
+// parseDocArgs splits "<name>" or "<name> extends <parent>" into (name, parent).
+// Whitespace-tolerant. If "extends" keyword is absent or malformed, parent is "".
+func parseDocArgs(args string) (name, parent string) {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return "", ""
+	}
+	fields := strings.Fields(args)
+	if len(fields) >= 3 && fields[1] == "extends" {
+		return fields[0], strings.Join(fields[2:], " ")
+	}
+	return fields[0], ""
+}
+
+// mergeExtends prefers the modifier syntax over the legacy @extends directive.
+func mergeExtends(modifier, directive string) string {
+	if modifier != "" {
+		return modifier
+	}
+	return directive
+}
+
+// validateExtendsConflict returns E075 when modifier and directive declare
+// different parents in the same document.
+func validateExtendsConflict(modifier, directive string, directives []ast.Directive) *ast.Diagnostic {
+	if modifier == "" || directive == "" || modifier == directive {
+		return nil
+	}
+	pos := ast.Position{}
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveExtends {
+			pos = d.Position
+			break
+		}
+	}
+	return &ast.Diagnostic{
+		Severity: ast.SeverityError,
+		Code:     "E075",
+		Message:  fmt.Sprintf("conflicting extends declarations: modifier %q vs directive %q", modifier, directive),
+		Range:    ast.Range{Start: pos, End: pos},
+	}
+}
+
+// validateExtendsDeprecation emits I001 when the legacy @extends directive is used.
+func validateExtendsDeprecation(directive string, directives []ast.Directive) *ast.Diagnostic {
+	if directive == "" {
+		return nil
+	}
+	pos := ast.Position{}
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveExtends {
+			pos = d.Position
+			break
+		}
+	}
+	return &ast.Diagnostic{
+		Severity: ast.SeverityInfo,
+		Code:     "I001",
+		Message:  "@extends directive is deprecated; use modifier syntax: @doc <name> extends <parent>",
+		Range:    ast.Range{Start: pos, End: pos},
+	}
 }
 
 func extractExtends(directives []ast.Directive) string {
@@ -412,12 +497,100 @@ func extractReferences(source string) []ast.Reference {
 			inner := line[m[2]:m[3]]
 			ref := parseReferenceInner(inner)
 			ref.Raw = full
+			ref.IsLink = false
+			ref.Position = ast.Position{Line: i + 1, Column: m[0] + 1}
+			refs = append(refs, ref)
+		}
+
+		linkMatches := linkRe.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range linkMatches {
+			full := line[m[0]:m[1]]
+			isEscaped := len(full) > 0 && full[0] == '\\'
+			if isEscaped {
+				refs = append(refs, ast.Reference{
+					Raw:       full,
+					IsEscaped: true,
+					IsLink:    true,
+					Position:  ast.Position{Line: i + 1, Column: m[0] + 1},
+				})
+				continue
+			}
+
+			inner := line[m[2]:m[3]]
+			ref := parseReferenceInner(inner)
+			ref.Raw = full
+			ref.IsLink = true
 			ref.Position = ast.Position{Line: i + 1, Column: m[0] + 1}
 			refs = append(refs, ref)
 		}
 	}
 
 	return refs
+}
+
+// validateRefsAreAliasOnly enforces spec-v4 rule 3: {{}} and [[]] target tokens
+// must be either local variables, alias-prefixed property/symbol access, or
+// (for [[]]) a known import alias. Raw filesystem paths trigger E023; unknown
+// or invalid aliases inside [[]] trigger E024.
+func validateRefsAreAliasOnly(refs []ast.Reference, imports []ast.Import) []ast.Diagnostic {
+	aliases := make(map[string]bool)
+	for _, imp := range imports {
+		aliases[imp.Alias] = true
+	}
+
+	var diags []ast.Diagnostic
+	for _, ref := range refs {
+		if ref.IsEscaped {
+			continue
+		}
+		inner := refInner(ref)
+		// {{#section}} — current-file symbol — fine
+		if strings.HasPrefix(inner, "#") {
+			continue
+		}
+		if strings.Contains(inner, "/") || strings.HasPrefix(inner, ".") {
+			kind := "{{}}"
+			if ref.IsLink {
+				kind = "[[]]"
+			}
+			diags = append(diags, ast.Diagnostic{
+				Severity: ast.SeverityError,
+				Code:     "E023",
+				Message:  fmt.Sprintf("raw path not allowed in %s; declare with @import alias from <path> first", kind),
+				Range:    ast.Range{Start: ref.Position, End: ref.Position},
+			})
+			continue
+		}
+		if ref.IsLink {
+			head := ref.PathPart
+			if !aliasRe.MatchString(head) {
+				diags = append(diags, ast.Diagnostic{
+					Severity: ast.SeverityError,
+					Code:     "E024",
+					Message:  fmt.Sprintf("invalid alias in %s", ref.Raw),
+					Range:    ast.Range{Start: ref.Position, End: ref.Position},
+				})
+				continue
+			}
+			if !aliases[head] {
+				diags = append(diags, ast.Diagnostic{
+					Severity: ast.SeverityError,
+					Code:     "E024",
+					Message:  fmt.Sprintf("unknown alias %q in [[]]; declare with @import first", head),
+					Range:    ast.Range{Start: ref.Position, End: ref.Position},
+				})
+			}
+		}
+	}
+	return diags
+}
+
+// refInner strips the surrounding [[/]] or {{/}} from ref.Raw.
+func refInner(ref ast.Reference) string {
+	if ref.IsLink {
+		return strings.TrimSuffix(strings.TrimPrefix(ref.Raw, "[["), "]]")
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(ref.Raw, "{{"), "}}")
 }
 
 func parseReferenceInner(inner string) ast.Reference {
@@ -531,6 +704,12 @@ func directiveKindName(k ast.DirectiveKind) string {
 		return "if"
 	case ast.DirectiveFor:
 		return "for"
+	case ast.DirectiveImport:
+		return "import"
+	case ast.DirectiveConst:
+		return "const"
+	case ast.DirectiveLet:
+		return "let"
 	default:
 		return "unknown"
 	}
@@ -573,4 +752,77 @@ func calculateContentRanges(headings []*ast.Heading, totalLines int) {
 			End:   ast.Position{Line: endLine, Column: 1},
 		}
 	}
+}
+
+// validateFilePrelude returns E007 diagnostics for any file-level @import/@const/@let
+// directives that appear after the body start (first @doc/@template/heading).
+// Section-scope @const/@let inside a heading scope (line > firstHeadingLine) are allowed.
+func validateFilePrelude(directives []ast.Directive, headings []*ast.Heading) []ast.Diagnostic {
+	bodyStart := -1
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveDoc || d.Kind == ast.DirectiveTemplate {
+			bodyStart = d.Position.Line
+			break
+		}
+	}
+	firstHeadingLine := -1
+	if len(headings) > 0 {
+		firstHeadingLine = headings[0].Position.Line
+		if bodyStart < 0 || firstHeadingLine < bodyStart {
+			bodyStart = firstHeadingLine
+		}
+	}
+	if bodyStart < 0 {
+		return nil
+	}
+
+	var diags []ast.Diagnostic
+	for _, d := range directives {
+		if d.Kind != ast.DirectiveImport && d.Kind != ast.DirectiveConst && d.Kind != ast.DirectiveLet {
+			continue
+		}
+		if d.Position.Line <= bodyStart {
+			continue // prelude — fine
+		}
+		if firstHeadingLine > 0 && d.Position.Line > firstHeadingLine {
+			continue // section-scope — fine
+		}
+		diags = append(diags, ast.Diagnostic{
+			Severity: ast.SeverityError,
+			Code:     "E007",
+			Message:  fmt.Sprintf("file-level declaration after body start: @%s must be in the prelude (before first @doc/@template/heading)", directiveKindName(d.Kind)),
+			Range:    ast.Range{Start: d.Position, End: d.Position},
+		})
+	}
+	return diags
+}
+
+
+// validatePascalCase emits I002 (Info) when @doc/@template names don't match
+// the recommended PascalCase pattern. Non-blocking — kebab-case still valid.
+func validatePascalCase(directives []ast.Directive) []ast.Diagnostic {
+	var diags []ast.Diagnostic
+	for _, d := range directives {
+		if d.Kind != ast.DirectiveDoc && d.Kind != ast.DirectiveTemplate {
+			continue
+		}
+		name, _ := parseDocArgs(d.Args)
+		if name == "" {
+			continue
+		}
+		if pascalRe.MatchString(name) {
+			continue
+		}
+		kind := "doc"
+		if d.Kind == ast.DirectiveTemplate {
+			kind = "template"
+		}
+		diags = append(diags, ast.Diagnostic{
+			Severity: ast.SeverityInfo,
+			Code:     "I002",
+			Message:  fmt.Sprintf("@%s name %q does not match recommended PascalCase pattern ^[A-Z][A-Za-z0-9]*$", kind, name),
+			Range:    ast.Range{Start: d.Position, End: d.Position},
+		})
+	}
+	return diags
 }

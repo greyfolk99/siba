@@ -121,9 +121,9 @@ func ValidateWorkspace(ws *workspace.Workspace) (map[string][]ast.Diagnostic, []
 	}
 
 	// 2. Workspace-level: circular reference detection
-	g := refs.BuildDependencyGraph(ws)
-	cycleDiags := refs.DetectCycles(g)
-	wsDiags = append(wsDiags, cycleDiags...)
+	graphs := refs.BuildDependencyGraphs(ws)
+	wsDiags = append(wsDiags, refs.DetectExtendsCycles(graphs.Extends)...)
+	wsDiags = append(wsDiags, refs.DetectEmbedCycles(graphs.Embed)...)
 
 	return fileDiags, wsDiags
 }

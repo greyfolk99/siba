@@ -497,8 +497,40 @@ func (ip *interpreter) skipUntilEnd(endKeyword string) {
 }
 
 func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) string {
-	// protect escapes
+	// protect escapes (both \{{ and \[[)
 	line = protectEscapes(line)
+
+	// [[alias]] / [[alias#section]] — compile to markdown link via @import path.
+	// Links never evaluate the target document.
+	line = linkSubstRe.ReplaceAllStringFunc(line, func(match string) string {
+		inner := match[2 : len(match)-2]
+		alias := inner
+		section := ""
+		if hashIdx := strings.Index(inner, "#"); hashIdx >= 0 {
+			alias = inner[:hashIdx]
+			section = inner[hashIdx+1:]
+		}
+		if ip.doc == nil {
+			return match
+		}
+		var path string
+		for _, imp := range ip.doc.Imports {
+			if imp.Alias == alias {
+				path = imp.Path
+				break
+			}
+		}
+		if path == "" {
+			return match
+		}
+		text := alias
+		href := path
+		if section != "" {
+			text = alias + "#" + section
+			href = path + "#" + section
+		}
+		return fmt.Sprintf("[%s](%s)", text, href)
+	})
 
 	line = refRe.ReplaceAllStringFunc(line, func(match string) string {
 		inner := match[2 : len(match)-2]

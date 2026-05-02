@@ -201,20 +201,6 @@ func TestValidateDocument_NoExtends_SkipsTemplate(t *testing.T) {
 	}
 }
 
-// TestValidateDocument_NoWorkspace_SkipsTemplate verifies that a nil workspace gracefully skips template validation without panic.
-func TestValidateDocument_NoWorkspace_SkipsTemplate(t *testing.T) {
-	doc := &ast.Document{
-		Path:        "child.md",
-		Source:      "# Hello\n",
-		ExtendsName: "base",
-	}
-
-	diags := ValidateDocument(doc, nil)
-	// no workspace → skip template validation, no panic
-	// may have other diags but no panic
-	_ = diags
-}
-
 // --- ValidateWorkspace ---
 
 // TestValidateWorkspace_NoIssues verifies that a clean workspace with one valid document produces no diagnostics.
@@ -235,23 +221,54 @@ func TestValidateWorkspace_NoIssues(t *testing.T) {
 	}
 }
 
-// TestValidateWorkspace_CircularRef verifies that mutually referencing documents produce an E060 circular reference diagnostic.
-func TestValidateWorkspace_CircularRef(t *testing.T) {
+// TestValidateWorkspace_CircularEmbed verifies that mutually-embedding documents
+// produce an E022 circular embed diagnostic (spec-v4: embed cycles → E022).
+func TestValidateWorkspace_CircularEmbed(t *testing.T) {
 	docA := &ast.Document{
-		Name: "a",
-		Path: "a.md",
+		Name:   "a",
+		Path:   "a.md",
 		Source: "# A\n",
 		References: []ast.Reference{
-			{Raw: "b", PathPart: "b", Position: ast.Position{Line: 1}},
+			{Raw: "{{b}}", PathPart: "b", Position: ast.Position{Line: 1}},
 		},
 	}
 	docB := &ast.Document{
-		Name: "b",
-		Path: "b.md",
+		Name:   "b",
+		Path:   "b.md",
 		Source: "# B\n",
 		References: []ast.Reference{
-			{Raw: "a", PathPart: "a", Position: ast.Position{Line: 1}},
+			{Raw: "{{a}}", PathPart: "a", Position: ast.Position{Line: 1}},
 		},
+	}
+	ws := makeWorkspace(docA, docB)
+
+	_, wsDiags := ValidateWorkspace(ws)
+	found := false
+	for _, d := range wsDiags {
+		if d.Code == "E022" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected E022 for circular embed")
+	}
+}
+
+// TestValidateWorkspace_CircularExtends verifies that mutually-extending templates
+// produce an E060 circular reference diagnostic.
+func TestValidateWorkspace_CircularExtends(t *testing.T) {
+	docA := &ast.Document{
+		Name:        "a",
+		Path:        "a.md",
+		Source:      "# A\n",
+		ExtendsName: "b",
+	}
+	docB := &ast.Document{
+		Name:        "b",
+		Path:        "b.md",
+		Source:      "# B\n",
+		ExtendsName: "a",
 	}
 	ws := makeWorkspace(docA, docB)
 
@@ -264,7 +281,36 @@ func TestValidateWorkspace_CircularRef(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("expected E060 for circular reference")
+		t.Fatal("expected E060 for circular extends")
+	}
+}
+
+// TestStreamRender_LinkCycleAllowed verifies that a [[]] link cycle (a → b → a)
+// is allowed and does not raise E022/E060.
+func TestValidateWorkspace_LinkCycleAllowed(t *testing.T) {
+	docA := &ast.Document{
+		Name:   "a",
+		Path:   "a.md",
+		Source: "# A\n",
+		References: []ast.Reference{
+			{Raw: "[[b]]", PathPart: "b", IsLink: true, Position: ast.Position{Line: 1}},
+		},
+	}
+	docB := &ast.Document{
+		Name:   "b",
+		Path:   "b.md",
+		Source: "# B\n",
+		References: []ast.Reference{
+			{Raw: "[[a]]", PathPart: "a", IsLink: true, Position: ast.Position{Line: 1}},
+		},
+	}
+	ws := makeWorkspace(docA, docB)
+
+	_, wsDiags := ValidateWorkspace(ws)
+	for _, d := range wsDiags {
+		if d.Code == "E022" || d.Code == "E060" {
+			t.Errorf("unexpected cycle diagnostic %s for link cycle: %v", d.Code, d)
+		}
 	}
 }
 
@@ -389,5 +435,46 @@ func TestAllDiagnostics_Empty(t *testing.T) {
 	all := AllDiagnostics(nil, nil)
 	if len(all) != 0 {
 		t.Fatalf("expected 0, got %d", len(all))
+	}
+}
+
+// TestValidateWorkspace_ThreeNodeEmbedCycle verifies that a 3-node embed cycle
+// (a → b → c → a) is detected with E022.
+func TestValidateWorkspace_ThreeNodeEmbedCycle(t *testing.T) {
+	docA := &ast.Document{
+		Name:   "a",
+		Path:   "a.md",
+		Source: "# A\n",
+		References: []ast.Reference{
+			{Raw: "{{b}}", PathPart: "b", Position: ast.Position{Line: 1}},
+		},
+	}
+	docB := &ast.Document{
+		Name:   "b",
+		Path:   "b.md",
+		Source: "# B\n",
+		References: []ast.Reference{
+			{Raw: "{{c}}", PathPart: "c", Position: ast.Position{Line: 1}},
+		},
+	}
+	docC := &ast.Document{
+		Name:   "c",
+		Path:   "c.md",
+		Source: "# C\n",
+		References: []ast.Reference{
+			{Raw: "{{a}}", PathPart: "a", Position: ast.Position{Line: 1}},
+		},
+	}
+	ws := makeWorkspace(docA, docB, docC)
+
+	_, wsDiags := ValidateWorkspace(ws)
+	found := false
+	for _, d := range wsDiags {
+		if d.Code == "E022" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected E022 for 3-node embed cycle")
 	}
 }

@@ -1,5 +1,4 @@
-<!-- @doc bob -->
-<!-- @extends employee -->
+<!-- @doc bob extends employee -->
 <!-- @const name = "Bob" -->
 <!-- @const role = "Designer" -->
 <!-- @const skills = ["UI", "UX", "Figma"] -->

@@ -233,3 +233,68 @@ B: {{mode}}`
 		t.Errorf("expected Section B to have mode=beta, got:\n%s", output)
 	}
 }
+
+// TestStreamRender_Link verifies that [[alias]] compiles to a markdown link
+// using the @import path. [[alice]] with @import alice from ./alice.md → [alice](./alice.md)
+func TestStreamRender_Link(t *testing.T) {
+	src := `<!-- @import alice from ./alice.md -->
+
+<!-- @doc index -->
+# Index
+
+See [[alice]] for details.`
+	doc := parser.ParseDocument("index.md", src)
+
+	var buf bytes.Buffer
+	if err := StreamRender(doc, &buf, nil); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[alice](./alice.md)") {
+		t.Errorf("expected [alice](./alice.md) in output, got:\n%s", out)
+	}
+}
+
+// TestStreamRender_LinkWithSection verifies [[alias#section]] compiles with anchor.
+func TestStreamRender_LinkWithSection(t *testing.T) {
+	src := `<!-- @import api from ./api.md -->
+
+<!-- @doc index -->
+# Index
+
+[[api#endpoints]]`
+	doc := parser.ParseDocument("index.md", src)
+
+	var buf bytes.Buffer
+	if err := StreamRender(doc, &buf, nil); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[api#endpoints](./api.md#endpoints)") {
+		t.Errorf("expected [api#endpoints](./api.md#endpoints), got:\n%s", out)
+	}
+}
+
+// TestStreamRender_EscapedLink verifies that \[[alias]] is preserved as a literal
+// (without link compilation), matching the existing \{{var}} escape behavior.
+func TestStreamRender_EscapedLink(t *testing.T) {
+	src := `<!-- @import alice from ./alice.md -->
+
+<!-- @doc Index -->
+# Index
+
+Literal: \[[alice]]`
+	doc := parser.ParseDocument("index.md", src)
+
+	var buf bytes.Buffer
+	if err := StreamRender(doc, &buf, nil); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[[alice]]") {
+		t.Errorf("expected literal [[alice]] (escaped), got:\n%s", out)
+	}
+	if strings.Contains(out, "[alice](./alice.md)") {
+		t.Errorf("escaped link should not have been compiled, got:\n%s", out)
+	}
+}

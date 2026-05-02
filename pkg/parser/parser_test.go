@@ -107,9 +107,9 @@ func TestGenerateSlug(t *testing.T) {
 // TestParseDocument verifies that ParseDocument produces a complete Document with the
 // correct name, variables, template references, heading tree, and zero diagnostics.
 func TestParseDocument(t *testing.T) {
-	source := `<!-- @doc payment-api -->
-<!-- @const service-name = "payment-api" -->
+	source := `<!-- @const service-name = "payment-api" -->
 <!-- @const version = "2.1.0" -->
+<!-- @doc PaymentApi -->
 
 # Payment API
 
@@ -125,8 +125,8 @@ func TestParseDocument(t *testing.T) {
 
 	doc := ParseDocument("test.md", source)
 
-	if doc.Name != "payment-api" {
-		t.Errorf("expected doc name 'payment-api', got %q", doc.Name)
+	if doc.Name != "PaymentApi" {
+		t.Errorf("expected doc name 'PaymentApi', got %q", doc.Name)
 	}
 	if len(doc.Variables) != 3 {
 		t.Errorf("expected 3 variables, got %d", len(doc.Variables))
@@ -239,15 +239,15 @@ func TestTemplateRequiresName(t *testing.T) {
 // TestTemplateWithName verifies that a valid @template directive with a name sets
 // the document Name and IsTemplate fields correctly without producing diagnostics.
 func TestTemplateWithName(t *testing.T) {
-	source := `<!-- @template api-spec -->
+	source := `<!-- @template ApiSpec -->
 # API Spec
 ## Endpoints
 ## Error Handling`
 
 	doc := ParseDocument("tmpl.md", source)
 
-	if doc.Name != "api-spec" {
-		t.Errorf("expected Name='api-spec', got %q", doc.Name)
+	if doc.Name != "ApiSpec" {
+		t.Errorf("expected Name='ApiSpec', got %q", doc.Name)
 	}
 	if !doc.IsTemplate {
 		t.Error("expected IsTemplate=true")
@@ -406,5 +406,263 @@ func TestParseDocuments_Multi(t *testing.T) {
 	}
 	if !docs[1].IsTemplate {
 		t.Error("expected second doc IsTemplate=true")
+	}
+}
+
+// TestParseDoc_ExtendsModifier verifies that "@doc <name> extends <parent>" sets
+// both Name and ExtendsName via the modifier syntax (replaces separate @extends directive).
+func TestParseDoc_ExtendsModifier(t *testing.T) {
+	source := `<!-- @doc alice extends employee -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	if doc.Name != "alice" {
+		t.Errorf("expected Name='alice', got %q", doc.Name)
+	}
+	if doc.ExtendsName != "employee" {
+		t.Errorf("expected ExtendsName='employee', got %q", doc.ExtendsName)
+	}
+	if doc.IsTemplate {
+		t.Error("expected IsTemplate=false")
+	}
+	for _, d := range doc.Diagnostics {
+		if d.Severity == ast.SeverityError {
+			t.Errorf("unexpected error diagnostic: %v", d)
+		}
+	}
+}
+
+// TestParseTemplate_ExtendsModifier verifies @template name extends parent via modifier.
+func TestParseTemplate_ExtendsModifier(t *testing.T) {
+	source := `<!-- @template senior-employee extends employee -->
+# Senior Employee
+## Profile`
+	doc := ParseDocument("test.md", source)
+	if doc.Name != "senior-employee" {
+		t.Errorf("expected Name='senior-employee', got %q", doc.Name)
+	}
+	if doc.ExtendsName != "employee" {
+		t.Errorf("expected ExtendsName='employee', got %q", doc.ExtendsName)
+	}
+	if !doc.IsTemplate {
+		t.Error("expected IsTemplate=true")
+	}
+}
+
+// TestParseDoc_ExtendsAliasModifier verifies "@doc x extends alias#parent" works.
+func TestParseDoc_ExtendsAliasModifier(t *testing.T) {
+	source := `<!-- @import tmpl from ./t.md -->
+<!-- @doc x extends tmpl#project -->
+# X`
+	doc := ParseDocument("test.md", source)
+	if doc.ExtendsName != "tmpl#project" {
+		t.Errorf("expected ExtendsName='tmpl#project', got %q", doc.ExtendsName)
+	}
+}
+
+// TestParseDoc_ExtendsDirectiveDeprecated verifies the legacy "@extends X" directive
+// still works but produces an I001 deprecation Info diagnostic.
+func TestParseDoc_ExtendsDirectiveDeprecated(t *testing.T) {
+	source := `<!-- @doc alice -->
+<!-- @extends employee -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	if doc.ExtendsName != "employee" {
+		t.Errorf("expected ExtendsName='employee', got %q", doc.ExtendsName)
+	}
+	hasInfo := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "I001" && d.Severity == ast.SeverityInfo {
+			hasInfo = true
+		}
+	}
+	if !hasInfo {
+		t.Error("expected I001 SeverityInfo diagnostic for deprecated @extends directive")
+	}
+}
+
+// TestParseDoc_ExtendsConflict verifies E075 when modifier and directive disagree.
+func TestParseDoc_ExtendsConflict(t *testing.T) {
+	source := `<!-- @doc alice extends employee -->
+<!-- @extends manager -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E075" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E075 for conflicting extends declarations")
+	}
+}
+
+// TestPrelude_LetAfterHeading verifies that a file-level @let after the body start
+// (first @doc/@template/heading) raises E007.
+func TestPrelude_LetAfterHeading(t *testing.T) {
+	source := `<!-- @doc x -->
+<!-- @let bad = 1 -->
+# X
+text`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E007" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E007 for file-level @let after body start")
+	}
+}
+
+// TestPrelude_ConstBeforeDoc_OK verifies that @const before @doc is fine.
+func TestPrelude_ConstBeforeDoc_OK(t *testing.T) {
+	source := `<!-- @import a from ./a.md -->
+<!-- @const greeting = "hi" -->
+<!-- @doc x -->
+# X`
+	doc := ParseDocument("test.md", source)
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E007" {
+			t.Errorf("unexpected E007: %v", d)
+		}
+	}
+}
+
+// TestPrelude_LetInsideHeadingScope_OK verifies that @let inside a heading scope
+// (section-scope, i.e., line > firstHeadingLine) is allowed and does NOT raise E007.
+func TestPrelude_LetInsideHeadingScope_OK(t *testing.T) {
+	source := `<!-- @doc x -->
+# X
+## Section
+<!-- @let inner = 1 -->
+{{inner}}`
+	doc := ParseDocument("test.md", source)
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E007" {
+			t.Errorf("unexpected E007 for section-scope @let: %v", d)
+		}
+	}
+}
+
+// TestParseLink_BasicAlias verifies that [[alias]] is parsed as a link reference.
+func TestParseLink_BasicAlias(t *testing.T) {
+	source := `<!-- @import alice from ./alice.md -->
+
+<!-- @doc index -->
+# Index
+
+See [[alice]] for details.`
+	doc := ParseDocument("test.md", source)
+	var found *ast.Reference
+	for i := range doc.References {
+		if doc.References[i].Raw == "[[alice]]" {
+			found = &doc.References[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected a [[alice]] reference, got refs: %+v", doc.References)
+	}
+	if !found.IsLink {
+		t.Error("expected IsLink=true")
+	}
+	if found.PathPart != "alice" {
+		t.Errorf("expected PathPart='alice', got %q", found.PathPart)
+	}
+}
+
+// TestParseEmbed_RawPathRejected verifies that {{some/path}} (raw path) raises E023.
+func TestParseEmbed_RawPathRejected(t *testing.T) {
+	source := `<!-- @doc index -->
+# Index
+{{some/path}}`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E023" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E023 for raw path in {{}}")
+	}
+}
+
+// TestParseLink_RawPathRejected verifies that [[./some/path]] raises E023.
+func TestParseLink_RawPathRejected(t *testing.T) {
+	source := `<!-- @doc index -->
+# Index
+[[./some/path]]`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E023" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E023 for raw path in [[]]")
+	}
+}
+
+// TestPascalCase_DocLowercase verifies that lowercase doc/template names
+// produce I002 SeverityInfo (not error).
+func TestPascalCase_DocLowercase(t *testing.T) {
+	source := `<!-- @doc alice -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	hasInfo := false
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "I002" && d.Severity == ast.SeverityInfo {
+			hasInfo = true
+		}
+		if d.Severity == ast.SeverityError {
+			hasErr = true
+		}
+	}
+	if !hasInfo {
+		t.Error("expected I002 Info diagnostic for lowercase @doc name")
+	}
+	if hasErr {
+		t.Error("expected no error diagnostics for lowercase @doc name")
+	}
+}
+
+
+// TestParseLink_UnknownAlias verifies that [[unknownAlias]] (no @import) raises E024.
+func TestParseLink_UnknownAlias(t *testing.T) {
+	source := `<!-- @doc Index -->
+# Index
+
+[[ghost]]`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E024" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E024 for unknown alias in [[]]")
+	}
+}
+
+// TestParseLink_EmptyAlias verifies that [[]] (empty inner) is rejected.
+// linkRe requires at least one non-]/non-newline char; an empty [[]] doesn't match
+// the regex and isn't extracted as a link reference at all — confirming the
+// surface-level guarantee that links always carry a target.
+func TestParseLink_EmptyAlias(t *testing.T) {
+	source := `<!-- @doc Index -->
+# Index
+
+[[]]`
+	doc := ParseDocument("test.md", source)
+	for _, ref := range doc.References {
+		if ref.IsLink {
+			t.Errorf("expected no link reference for empty [[]], got %+v", ref)
+		}
 	}
 }

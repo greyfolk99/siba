@@ -12,10 +12,13 @@ import (
 )
 
 const escapePlaceholder = "\x00SIBA_ESCAPE\x00"
+const escapeLinkPlaceholder = "\x00SIBA_LESC\x00"
 
 var (
 	escapeRefRe    = regexp.MustCompile(`\\\{\{([^}]+)\}\}`)
+	escapeLinkRe   = regexp.MustCompile(`\\\[\[([^\]]+)\]\]`)
 	refRe          = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+	linkSubstRe    = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
 	refDirectiveRe = regexp.MustCompile(`<!--\s*@(\w+)\s*(.*?)\s*-->`)
 )
 
@@ -99,28 +102,47 @@ func (ec *EvalContext) GetCached(key string) (string, bool) {
 }
 
 func protectEscapes(content string) string {
-	return escapeRefRe.ReplaceAllStringFunc(content, func(match string) string {
+	content = escapeRefRe.ReplaceAllStringFunc(content, func(match string) string {
 		inner := match[3 : len(match)-2]
 		return escapePlaceholder + inner + escapePlaceholder
 	})
+	content = escapeLinkRe.ReplaceAllStringFunc(content, func(match string) string {
+		inner := match[3 : len(match)-2]
+		return escapeLinkPlaceholder + inner + escapeLinkPlaceholder
+	})
+	return content
 }
 
 func restoreEscapes(content string) string {
-	parts := strings.Split(content, escapePlaceholder)
-	if len(parts) == 1 {
-		return content
-	}
-	var b strings.Builder
-	for i, part := range parts {
-		if i%2 == 1 {
-			b.WriteString("{{")
-			b.WriteString(part)
-			b.WriteString("}}")
-		} else {
-			b.WriteString(part)
+	if strings.Contains(content, escapePlaceholder) {
+		parts := strings.Split(content, escapePlaceholder)
+		var b strings.Builder
+		for i, part := range parts {
+			if i%2 == 1 {
+				b.WriteString("{{")
+				b.WriteString(part)
+				b.WriteString("}}")
+			} else {
+				b.WriteString(part)
+			}
 		}
+		content = b.String()
 	}
-	return b.String()
+	if strings.Contains(content, escapeLinkPlaceholder) {
+		parts := strings.Split(content, escapeLinkPlaceholder)
+		var b strings.Builder
+		for i, part := range parts {
+			if i%2 == 1 {
+				b.WriteString("[[")
+				b.WriteString(part)
+				b.WriteString("]]")
+			} else {
+				b.WriteString(part)
+			}
+		}
+		content = b.String()
+	}
+	return content
 }
 
 // RenderWorkspace exports all documents to _export/{version}/ using StreamRender.
