@@ -545,3 +545,64 @@ func TestPrelude_LetInsideHeadingScope_OK(t *testing.T) {
 		}
 	}
 }
+
+// TestParseLink_BasicAlias verifies that [[alias]] is parsed as a link reference.
+func TestParseLink_BasicAlias(t *testing.T) {
+	source := `<!-- @import alice from ./alice.md -->
+
+<!-- @doc index -->
+# Index
+
+See [[alice]] for details.`
+	doc := ParseDocument("test.md", source)
+	var found *ast.Reference
+	for i := range doc.References {
+		if doc.References[i].Raw == "[[alice]]" {
+			found = &doc.References[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected a [[alice]] reference, got refs: %+v", doc.References)
+	}
+	if !found.IsLink {
+		t.Error("expected IsLink=true")
+	}
+	if found.PathPart != "alice" {
+		t.Errorf("expected PathPart='alice', got %q", found.PathPart)
+	}
+}
+
+// TestParseEmbed_RawPathRejected verifies that {{some/path}} (raw path) raises E023.
+func TestParseEmbed_RawPathRejected(t *testing.T) {
+	source := `<!-- @doc index -->
+# Index
+{{some/path}}`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E023" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E023 for raw path in {{}}")
+	}
+}
+
+// TestParseLink_RawPathRejected verifies that [[./some/path]] raises E023.
+func TestParseLink_RawPathRejected(t *testing.T) {
+	source := `<!-- @doc index -->
+# Index
+[[./some/path]]`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E023" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E023 for raw path in [[]]")
+	}
+}

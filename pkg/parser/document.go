@@ -9,10 +9,12 @@ import (
 )
 
 var (
-	refRe        = regexp.MustCompile(`(?:\\)?\{\{([^}]+)\}\}`)
-	varDeclRe    = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*(?::\s*(.+?))?\s*=\s*(.+)$`)
+	refRe         = regexp.MustCompile(`(?:\\)?\{\{([^}]+)\}\}`)
+	linkRe        = regexp.MustCompile(`(?:\\)?\[\[([^\]]+)\]\]`)
+	varDeclRe     = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*(?::\s*(.+?))?\s*=\s*(.+)$`)
 	varTypeDeclRe = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*:\s*(.+)$`)
-	forRe        = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
+	forRe         = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
+	aliasRe       = regexp.MustCompile(`^[A-Za-z_][\w-]*$`)
 )
 
 // ParseDocuments parses a file that may contain multiple @template/@doc declarations.
@@ -147,8 +149,9 @@ func ParseDocument(path string, source string) *ast.Document {
 	// Extract variables
 	doc.Variables = extractVariables(doc.Directives)
 
-	// Extract references
+	// Extract references (both {{}} embed and [[]] link)
 	doc.References = extractReferences(source)
+	doc.Diagnostics = append(doc.Diagnostics, validateRefsAreAliasOnly(doc.References, doc.Imports)...)
 
 	// Extract control blocks
 	blocks, diags := extractControlBlocks(doc.Directives)
@@ -490,12 +493,100 @@ func extractReferences(source string) []ast.Reference {
 			inner := line[m[2]:m[3]]
 			ref := parseReferenceInner(inner)
 			ref.Raw = full
+			ref.IsLink = false
+			ref.Position = ast.Position{Line: i + 1, Column: m[0] + 1}
+			refs = append(refs, ref)
+		}
+
+		linkMatches := linkRe.FindAllStringSubmatchIndex(line, -1)
+		for _, m := range linkMatches {
+			full := line[m[0]:m[1]]
+			isEscaped := len(full) > 0 && full[0] == '\\'
+			if isEscaped {
+				refs = append(refs, ast.Reference{
+					Raw:       full,
+					IsEscaped: true,
+					IsLink:    true,
+					Position:  ast.Position{Line: i + 1, Column: m[0] + 1},
+				})
+				continue
+			}
+
+			inner := line[m[2]:m[3]]
+			ref := parseReferenceInner(inner)
+			ref.Raw = full
+			ref.IsLink = true
 			ref.Position = ast.Position{Line: i + 1, Column: m[0] + 1}
 			refs = append(refs, ref)
 		}
 	}
 
 	return refs
+}
+
+// validateRefsAreAliasOnly enforces spec-v4 rule 3: {{}} and [[]] target tokens
+// must be either local variables, alias-prefixed property/symbol access, or
+// (for [[]]) a known import alias. Raw filesystem paths trigger E023; unknown
+// or invalid aliases inside [[]] trigger E024.
+func validateRefsAreAliasOnly(refs []ast.Reference, imports []ast.Import) []ast.Diagnostic {
+	aliases := make(map[string]bool)
+	for _, imp := range imports {
+		aliases[imp.Alias] = true
+	}
+
+	var diags []ast.Diagnostic
+	for _, ref := range refs {
+		if ref.IsEscaped {
+			continue
+		}
+		inner := refInner(ref)
+		// {{#section}} — current-file symbol — fine
+		if strings.HasPrefix(inner, "#") {
+			continue
+		}
+		if strings.Contains(inner, "/") || strings.HasPrefix(inner, ".") {
+			kind := "{{}}"
+			if ref.IsLink {
+				kind = "[[]]"
+			}
+			diags = append(diags, ast.Diagnostic{
+				Severity: ast.SeverityError,
+				Code:     "E023",
+				Message:  fmt.Sprintf("raw path not allowed in %s; declare with @import alias from <path> first", kind),
+				Range:    ast.Range{Start: ref.Position, End: ref.Position},
+			})
+			continue
+		}
+		if ref.IsLink {
+			head := ref.PathPart
+			if !aliasRe.MatchString(head) {
+				diags = append(diags, ast.Diagnostic{
+					Severity: ast.SeverityError,
+					Code:     "E024",
+					Message:  fmt.Sprintf("invalid alias in %s", ref.Raw),
+					Range:    ast.Range{Start: ref.Position, End: ref.Position},
+				})
+				continue
+			}
+			if !aliases[head] {
+				diags = append(diags, ast.Diagnostic{
+					Severity: ast.SeverityError,
+					Code:     "E024",
+					Message:  fmt.Sprintf("unknown alias %q in [[]]; declare with @import first", head),
+					Range:    ast.Range{Start: ref.Position, End: ref.Position},
+				})
+			}
+		}
+	}
+	return diags
+}
+
+// refInner strips the surrounding [[/]] or {{/}} from ref.Raw.
+func refInner(ref ast.Reference) string {
+	if ref.IsLink {
+		return strings.TrimSuffix(strings.TrimPrefix(ref.Raw, "[["), "]]")
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(ref.Raw, "{{"), "}}")
 }
 
 func parseReferenceInner(inner string) ast.Reference {
