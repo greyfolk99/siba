@@ -109,7 +109,7 @@ func TestGenerateSlug(t *testing.T) {
 func TestParseDocument(t *testing.T) {
 	source := `<!-- @const service-name = "payment-api" -->
 <!-- @const version = "2.1.0" -->
-<!-- @doc payment-api -->
+<!-- @doc PaymentApi -->
 
 # Payment API
 
@@ -125,8 +125,8 @@ func TestParseDocument(t *testing.T) {
 
 	doc := ParseDocument("test.md", source)
 
-	if doc.Name != "payment-api" {
-		t.Errorf("expected doc name 'payment-api', got %q", doc.Name)
+	if doc.Name != "PaymentApi" {
+		t.Errorf("expected doc name 'PaymentApi', got %q", doc.Name)
 	}
 	if len(doc.Variables) != 3 {
 		t.Errorf("expected 3 variables, got %d", len(doc.Variables))
@@ -239,15 +239,15 @@ func TestTemplateRequiresName(t *testing.T) {
 // TestTemplateWithName verifies that a valid @template directive with a name sets
 // the document Name and IsTemplate fields correctly without producing diagnostics.
 func TestTemplateWithName(t *testing.T) {
-	source := `<!-- @template api-spec -->
+	source := `<!-- @template ApiSpec -->
 # API Spec
 ## Endpoints
 ## Error Handling`
 
 	doc := ParseDocument("tmpl.md", source)
 
-	if doc.Name != "api-spec" {
-		t.Errorf("expected Name='api-spec', got %q", doc.Name)
+	if doc.Name != "ApiSpec" {
+		t.Errorf("expected Name='ApiSpec', got %q", doc.Name)
 	}
 	if !doc.IsTemplate {
 		t.Error("expected IsTemplate=true")
@@ -604,5 +604,41 @@ func TestParseLink_RawPathRejected(t *testing.T) {
 	}
 	if !hasErr {
 		t.Error("expected E023 for raw path in [[]]")
+	}
+}
+
+// TestPascalCase_DocLowercase verifies that lowercase doc/template names
+// produce I002 SeverityInfo (not error).
+func TestPascalCase_DocLowercase(t *testing.T) {
+	source := `<!-- @doc alice -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	hasInfo := false
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "I002" && d.Severity == ast.SeverityInfo {
+			hasInfo = true
+		}
+		if d.Severity == ast.SeverityError {
+			hasErr = true
+		}
+	}
+	if !hasInfo {
+		t.Error("expected I002 Info diagnostic for lowercase @doc name")
+	}
+	if hasErr {
+		t.Error("expected no error diagnostics for lowercase @doc name")
+	}
+}
+
+// TestPascalCase_DocPascal_OK verifies that a PascalCase name produces no diagnostic.
+func TestPascalCase_DocPascal_OK(t *testing.T) {
+	source := `<!-- @doc Alice -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	for _, d := range doc.Diagnostics {
+		if d.Code == "I002" {
+			t.Errorf("unexpected I002 for PascalCase name: %v", d)
+		}
 	}
 }

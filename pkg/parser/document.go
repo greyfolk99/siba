@@ -15,6 +15,7 @@ var (
 	varTypeDeclRe = regexp.MustCompile(`^(private\s+)?(\w[\w-]*)\s*:\s*(.+)$`)
 	forRe         = regexp.MustCompile(`^(\w[\w-]*)\s+in\s+(.+)$`)
 	aliasRe       = regexp.MustCompile(`^[A-Za-z_][\w-]*$`)
+	pascalRe      = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 )
 
 // ParseDocuments parses a file that may contain multiple @template/@doc declarations.
@@ -141,6 +142,9 @@ func ParseDocument(path string, source string) *ast.Document {
 
 	// E007: file-prelude rule — @import/@const/@let must be in the prelude
 	doc.Diagnostics = append(doc.Diagnostics, validateFilePrelude(doc.Directives, flatHeadings)...)
+
+	// I002: PascalCase recommendation for @doc/@template (info only)
+	doc.Diagnostics = append(doc.Diagnostics, validatePascalCase(doc.Directives)...)
 
 	// Calculate content ranges
 	lines := strings.Split(source, "\n")
@@ -793,3 +797,32 @@ func validateFilePrelude(directives []ast.Directive, headings []*ast.Heading) []
 	return diags
 }
 
+
+// validatePascalCase emits I002 (Info) when @doc/@template names don't match
+// the recommended PascalCase pattern. Non-blocking — kebab-case still valid.
+func validatePascalCase(directives []ast.Directive) []ast.Diagnostic {
+	var diags []ast.Diagnostic
+	for _, d := range directives {
+		if d.Kind != ast.DirectiveDoc && d.Kind != ast.DirectiveTemplate {
+			continue
+		}
+		name, _ := parseDocArgs(d.Args)
+		if name == "" {
+			continue
+		}
+		if pascalRe.MatchString(name) {
+			continue
+		}
+		kind := "doc"
+		if d.Kind == ast.DirectiveTemplate {
+			kind = "template"
+		}
+		diags = append(diags, ast.Diagnostic{
+			Severity: ast.SeverityInfo,
+			Code:     "I002",
+			Message:  fmt.Sprintf("@%s name %q does not match recommended PascalCase pattern ^[A-Z][A-Za-z0-9]*$", kind, name),
+			Range:    ast.Range{Start: d.Position, End: d.Position},
+		})
+	}
+	return diags
+}
