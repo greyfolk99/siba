@@ -523,7 +523,7 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 			if ip.ws != nil && ip.doc != nil {
 				for _, imp := range ip.doc.Imports {
 					if imp.Alias == alias {
-						targetDoc := ip.ws.ResolveImportDoc(imp.Path)
+						targetDoc := ip.ws.ResolveImportDoc(imp.Path, ip.doc.Path)
 						if targetDoc != nil {
 							h := ast.FindHeading(targetDoc.Headings, symbol)
 							if h != nil {
@@ -562,7 +562,7 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 			if ip.ws != nil && ip.doc != nil {
 				for _, imp := range ip.doc.Imports {
 					if imp.Alias == objName {
-						targetDoc := ip.ws.ResolveImportDoc(imp.Path)
+						targetDoc := ip.ws.ResolveImportDoc(imp.Path, ip.doc.Path)
 						if targetDoc != nil {
 							for _, tv := range targetDoc.Variables {
 								if tv.Name == propName && tv.Access != ast.AccessPrivate {

@@ -112,15 +112,31 @@ func (w *Workspace) GetDocumentByPath(path string) *ast.Document {
 	return w.DocsByPath[path]
 }
 
-// ResolveImportDoc resolves an import path (relative, with/without .md, or @doc name) to a document.
-func (w *Workspace) ResolveImportDoc(importPath string) *ast.Document {
+// ResolveImportDoc resolves an import path relative to fromPath's directory.
+// Falls back to workspace-relative or @doc name if not found relative to fromPath.
+// importPath may be a relative path (./foo.md), with/without .md, or a @doc name.
+// fromPath is the absolute path of the file performing the import; pass "" if unknown.
+func (w *Workspace) ResolveImportDoc(importPath, fromPath string) *ast.Document {
+	tryPaths := []string{}
+
+	// Resolve relative to fromPath's directory if available
+	if fromPath != "" && (strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") || !filepath.IsAbs(importPath)) {
+		baseDir := filepath.Dir(fromPath)
+		joined := filepath.Clean(filepath.Join(baseDir, importPath))
+		tryPaths = append(tryPaths, joined, joined+".md")
+	}
+
+	// Fallback: workspace-relative (legacy behavior)
 	clean := strings.TrimPrefix(importPath, "./")
-	if doc := w.GetDocumentByPath(clean); doc != nil {
-		return doc
+	tryPaths = append(tryPaths, clean, clean+".md")
+
+	for _, p := range tryPaths {
+		if doc := w.GetDocumentByPath(p); doc != nil {
+			return doc
+		}
 	}
-	if doc := w.GetDocumentByPath(clean + ".md"); doc != nil {
-		return doc
-	}
+
+	// Final fallback: @doc name
 	if doc := w.GetDocument(importPath); doc != nil {
 		return doc
 	}
