@@ -274,3 +274,27 @@ func TestStreamRender_LinkWithSection(t *testing.T) {
 		t.Errorf("expected [api#endpoints](./api.md#endpoints), got:\n%s", out)
 	}
 }
+
+// TestStreamRender_EscapedLink verifies that \[[alias]] is preserved as a literal
+// (without link compilation), matching the existing \{{var}} escape behavior.
+func TestStreamRender_EscapedLink(t *testing.T) {
+	src := `<!-- @import alice from ./alice.md -->
+
+<!-- @doc Index -->
+# Index
+
+Literal: \[[alice]]`
+	doc := parser.ParseDocument("index.md", src)
+
+	var buf bytes.Buffer
+	if err := StreamRender(doc, &buf, nil); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[[alice]]") {
+		t.Errorf("expected literal [[alice]] (escaped), got:\n%s", out)
+	}
+	if strings.Contains(out, "[alice](./alice.md)") {
+		t.Errorf("escaped link should not have been compiled, got:\n%s", out)
+	}
+}

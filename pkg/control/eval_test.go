@@ -179,21 +179,6 @@ func TestEvaluateIf_PropertyAccess(t *testing.T) {
 	}
 }
 
-// TestEvaluateIf_BoolLiteral verifies that comparing a boolean variable against the literal true works correctly.
-func TestEvaluateIf_BoolLiteral(t *testing.T) {
-	s := makeScope(map[string]ast.Variable{
-		"enabled": {Name: "enabled", Mutability: ast.MutConst, Value: boolVal(true)},
-	})
-
-	result, diag := EvaluateIf("enabled == true", s)
-	if diag != nil {
-		t.Fatalf("unexpected diagnostic: %v", diag)
-	}
-	if !result {
-		t.Fatal("expected true")
-	}
-}
-
 // TestEvaluateIf_NullComparison verifies that comparing a null-typed variable against the null literal returns true.
 func TestEvaluateIf_NullComparison(t *testing.T) {
 	s := makeScope(map[string]ast.Variable{

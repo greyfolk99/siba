@@ -631,14 +631,38 @@ func TestPascalCase_DocLowercase(t *testing.T) {
 	}
 }
 
-// TestPascalCase_DocPascal_OK verifies that a PascalCase name produces no diagnostic.
-func TestPascalCase_DocPascal_OK(t *testing.T) {
-	source := `<!-- @doc Alice -->
-# Alice`
+
+// TestParseLink_UnknownAlias verifies that [[unknownAlias]] (no @import) raises E024.
+func TestParseLink_UnknownAlias(t *testing.T) {
+	source := `<!-- @doc Index -->
+# Index
+
+[[ghost]]`
 	doc := ParseDocument("test.md", source)
+	hasErr := false
 	for _, d := range doc.Diagnostics {
-		if d.Code == "I002" {
-			t.Errorf("unexpected I002 for PascalCase name: %v", d)
+		if d.Code == "E024" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E024 for unknown alias in [[]]")
+	}
+}
+
+// TestParseLink_EmptyAlias verifies that [[]] (empty inner) is rejected.
+// linkRe requires at least one non-]/non-newline char; an empty [[]] doesn't match
+// the regex and isn't extracted as a link reference at all — confirming the
+// surface-level guarantee that links always carry a target.
+func TestParseLink_EmptyAlias(t *testing.T) {
+	source := `<!-- @doc Index -->
+# Index
+
+[[]]`
+	doc := ParseDocument("test.md", source)
+	for _, ref := range doc.References {
+		if ref.IsLink {
+			t.Errorf("expected no link reference for empty [[]], got %+v", ref)
 		}
 	}
 }

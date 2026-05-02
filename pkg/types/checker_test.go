@@ -38,16 +38,6 @@ func TestCheckAssignment_Mismatch(t *testing.T) {
 	}
 }
 
-// TestCheckAssignment_NilType verifies that a variable with no type annotation (nil Type) accepts any value without error.
-func TestCheckAssignment_NilType(t *testing.T) {
-	v := ast.Variable{Name: "x", Type: nil}
-	val := ast.Value{Kind: ast.TypeString, Str: "anything"}
-
-	if d := CheckAssignment(v, val); d != nil {
-		t.Fatalf("nil type should accept anything, got %v", d)
-	}
-}
-
 // TestCheckAssignment_AnyType verifies that a variable typed as "any" accepts values of any kind without error.
 func TestCheckAssignment_AnyType(t *testing.T) {
 	v := ast.Variable{

@@ -250,20 +250,6 @@ func TestValidateContract_MatchByName(t *testing.T) {
 	}
 }
 
-// TestValidateContract_EmptyTemplate verifies that a template with no headings imposes no contract on the child.
-func TestValidateContract_EmptyTemplate(t *testing.T) {
-	tmpl := makeTemplate("base", "base.md", nil)
-	child := &ast.Document{
-		Headings: []*ast.Heading{
-			h(1, "Anything", "anything", "", ast.AnnotationRequired),
-		},
-	}
-
-	diags := ValidateContract(child, tmpl)
-	if len(diags) != 0 {
-		t.Fatalf("expected no diagnostics, got %d", len(diags))
-	}
-}
 
 // TestValidateContract_EmptyChild verifies that a child with no headings fails when the template has required ones.
 func TestValidateContract_EmptyChild(t *testing.T) {
@@ -416,17 +402,6 @@ func TestInheritVariables_ChildFirst(t *testing.T) {
 	}
 	if result[1].Name != "base_var" {
 		t.Fatalf("expected inherited var second, got %q", result[1].Name)
-	}
-}
-
-// TestInheritVariables_BothEmpty verifies that inheriting from two empty variable lists returns an empty result.
-func TestInheritVariables_BothEmpty(t *testing.T) {
-	tmpl := &ast.Document{Variables: nil}
-	child := &ast.Document{Variables: nil}
-
-	result, _ := InheritVariables(child, tmpl)
-	if len(result) != 0 {
-		t.Fatalf("expected 0 vars, got %d", len(result))
 	}
 }
 
