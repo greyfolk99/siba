@@ -1,5 +1,4 @@
-<!-- @doc weekly-report -->
-<!-- @extends report -->
+<!-- @doc weekly-report extends report -->
 <!-- @const week = "2026-W17" -->
 <!-- @const author = "Alice" -->
 # Weekly Report — {{week}}
