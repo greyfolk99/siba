@@ -408,3 +408,91 @@ func TestParseDocuments_Multi(t *testing.T) {
 		t.Error("expected second doc IsTemplate=true")
 	}
 }
+
+// TestParseDoc_ExtendsModifier verifies that "@doc <name> extends <parent>" sets
+// both Name and ExtendsName via the modifier syntax (replaces separate @extends directive).
+func TestParseDoc_ExtendsModifier(t *testing.T) {
+	source := `<!-- @doc alice extends employee -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	if doc.Name != "alice" {
+		t.Errorf("expected Name='alice', got %q", doc.Name)
+	}
+	if doc.ExtendsName != "employee" {
+		t.Errorf("expected ExtendsName='employee', got %q", doc.ExtendsName)
+	}
+	if doc.IsTemplate {
+		t.Error("expected IsTemplate=false")
+	}
+	for _, d := range doc.Diagnostics {
+		if d.Severity == ast.SeverityError {
+			t.Errorf("unexpected error diagnostic: %v", d)
+		}
+	}
+}
+
+// TestParseTemplate_ExtendsModifier verifies @template name extends parent via modifier.
+func TestParseTemplate_ExtendsModifier(t *testing.T) {
+	source := `<!-- @template senior-employee extends employee -->
+# Senior Employee
+## Profile`
+	doc := ParseDocument("test.md", source)
+	if doc.Name != "senior-employee" {
+		t.Errorf("expected Name='senior-employee', got %q", doc.Name)
+	}
+	if doc.ExtendsName != "employee" {
+		t.Errorf("expected ExtendsName='employee', got %q", doc.ExtendsName)
+	}
+	if !doc.IsTemplate {
+		t.Error("expected IsTemplate=true")
+	}
+}
+
+// TestParseDoc_ExtendsAliasModifier verifies "@doc x extends alias#parent" works.
+func TestParseDoc_ExtendsAliasModifier(t *testing.T) {
+	source := `<!-- @import tmpl from ./t.md -->
+<!-- @doc x extends tmpl#project -->
+# X`
+	doc := ParseDocument("test.md", source)
+	if doc.ExtendsName != "tmpl#project" {
+		t.Errorf("expected ExtendsName='tmpl#project', got %q", doc.ExtendsName)
+	}
+}
+
+// TestParseDoc_ExtendsDirectiveDeprecated verifies the legacy "@extends X" directive
+// still works but produces an I001 deprecation Info diagnostic.
+func TestParseDoc_ExtendsDirectiveDeprecated(t *testing.T) {
+	source := `<!-- @doc alice -->
+<!-- @extends employee -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	if doc.ExtendsName != "employee" {
+		t.Errorf("expected ExtendsName='employee', got %q", doc.ExtendsName)
+	}
+	hasInfo := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "I001" && d.Severity == ast.SeverityInfo {
+			hasInfo = true
+		}
+	}
+	if !hasInfo {
+		t.Error("expected I001 SeverityInfo diagnostic for deprecated @extends directive")
+	}
+}
+
+// TestParseDoc_ExtendsConflict verifies E075 when modifier and directive disagree.
+func TestParseDoc_ExtendsConflict(t *testing.T) {
+	source := `<!-- @doc alice extends employee -->
+<!-- @extends manager -->
+# Alice`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E075" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E075 for conflicting extends declarations")
+	}
+}

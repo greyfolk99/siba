@@ -30,9 +30,11 @@ func ParseDocuments(path string, source string) []*ast.Document {
 	var decls []declInfo
 	for _, d := range directives {
 		if d.Kind == ast.DirectiveTemplate {
-			decls = append(decls, declInfo{line: d.Position.Line, name: strings.TrimSpace(d.Args), isTemplate: true})
+			nm, _ := parseDocArgs(d.Args)
+			decls = append(decls, declInfo{line: d.Position.Line, name: nm, isTemplate: true})
 		} else if d.Kind == ast.DirectiveDoc {
-			decls = append(decls, declInfo{line: d.Position.Line, name: strings.TrimSpace(d.Args), isTemplate: false})
+			nm, _ := parseDocArgs(d.Args)
+			decls = append(decls, declInfo{line: d.Position.Line, name: nm, isTemplate: false})
 		}
 	}
 
@@ -92,9 +94,17 @@ func ParseDocument(path string, source string) *ast.Document {
 	// Parse directives
 	doc.Directives = ParseDirectives(source)
 
-	// Extract document metadata
-	doc.Name, doc.IsTemplate = extractDocMeta(doc.Directives)
-	doc.ExtendsName = extractExtends(doc.Directives)
+	// Extract document metadata (name + isTemplate + modifier-extends)
+	modifierExtends := ""
+	doc.Name, doc.IsTemplate, modifierExtends = extractDocMeta(doc.Directives)
+	directiveExtends := extractExtends(doc.Directives)
+	doc.ExtendsName = mergeExtends(modifierExtends, directiveExtends)
+	if diag := validateExtendsConflict(modifierExtends, directiveExtends, doc.Directives); diag != nil {
+		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
+	if diag := validateExtendsDeprecation(directiveExtends, doc.Directives); diag != nil {
+		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
 	doc.Imports = extractImports(doc.Directives)
 
 	// Validate @doc + @template exclusivity
@@ -145,21 +155,86 @@ func ParseDocument(path string, source string) *ast.Document {
 	return doc
 }
 
-// extractDocMeta returns (name, isTemplate) from @doc or @template directives.
-// @template name → name from template, isTemplate=true
-// @doc name → name from doc, isTemplate=false
-func extractDocMeta(directives []ast.Directive) (string, bool) {
+// extractDocMeta returns (name, isTemplate, extendsName) from @doc or @template
+// directives. Supports modifier syntax: "@doc Name extends Parent" or
+// "@template Name extends Parent". Modifier extends suffix is optional.
+func extractDocMeta(directives []ast.Directive) (string, bool, string) {
 	for _, d := range directives {
 		if d.Kind == ast.DirectiveTemplate {
-			return strings.TrimSpace(d.Args), true
+			name, parent := parseDocArgs(d.Args)
+			return name, true, parent
 		}
 	}
 	for _, d := range directives {
 		if d.Kind == ast.DirectiveDoc {
-			return strings.TrimSpace(d.Args), false
+			name, parent := parseDocArgs(d.Args)
+			return name, false, parent
 		}
 	}
-	return "", false
+	return "", false, ""
+}
+
+// parseDocArgs splits "<name>" or "<name> extends <parent>" into (name, parent).
+// Whitespace-tolerant. If "extends" keyword is absent or malformed, parent is "".
+func parseDocArgs(args string) (name, parent string) {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return "", ""
+	}
+	fields := strings.Fields(args)
+	if len(fields) >= 3 && fields[1] == "extends" {
+		return fields[0], strings.Join(fields[2:], " ")
+	}
+	return fields[0], ""
+}
+
+// mergeExtends prefers the modifier syntax over the legacy @extends directive.
+func mergeExtends(modifier, directive string) string {
+	if modifier != "" {
+		return modifier
+	}
+	return directive
+}
+
+// validateExtendsConflict returns E075 when modifier and directive declare
+// different parents in the same document.
+func validateExtendsConflict(modifier, directive string, directives []ast.Directive) *ast.Diagnostic {
+	if modifier == "" || directive == "" || modifier == directive {
+		return nil
+	}
+	pos := ast.Position{}
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveExtends {
+			pos = d.Position
+			break
+		}
+	}
+	return &ast.Diagnostic{
+		Severity: ast.SeverityError,
+		Code:     "E075",
+		Message:  fmt.Sprintf("conflicting extends declarations: modifier %q vs directive %q", modifier, directive),
+		Range:    ast.Range{Start: pos, End: pos},
+	}
+}
+
+// validateExtendsDeprecation emits I001 when the legacy @extends directive is used.
+func validateExtendsDeprecation(directive string, directives []ast.Directive) *ast.Diagnostic {
+	if directive == "" {
+		return nil
+	}
+	pos := ast.Position{}
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveExtends {
+			pos = d.Position
+			break
+		}
+	}
+	return &ast.Diagnostic{
+		Severity: ast.SeverityInfo,
+		Code:     "I001",
+		Message:  "@extends directive is deprecated; use modifier syntax: @doc <name> extends <parent>",
+		Range:    ast.Range{Start: pos, End: pos},
+	}
 }
 
 func extractExtends(directives []ast.Directive) string {
