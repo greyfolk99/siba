@@ -137,6 +137,9 @@ func ParseDocument(path string, source string) *ast.Document {
 	attachNamesToHeadings(flatHeadings, doc.Directives)
 	doc.Headings = BuildHeadingTree(flatHeadings)
 
+	// E007: file-prelude rule — @import/@const/@let must be in the prelude
+	doc.Diagnostics = append(doc.Diagnostics, validateFilePrelude(doc.Directives, flatHeadings)...)
+
 	// Calculate content ranges
 	lines := strings.Split(source, "\n")
 	calculateContentRanges(flatHeadings, len(lines))
@@ -606,6 +609,12 @@ func directiveKindName(k ast.DirectiveKind) string {
 		return "if"
 	case ast.DirectiveFor:
 		return "for"
+	case ast.DirectiveImport:
+		return "import"
+	case ast.DirectiveConst:
+		return "const"
+	case ast.DirectiveLet:
+		return "let"
 	default:
 		return "unknown"
 	}
@@ -649,3 +658,47 @@ func calculateContentRanges(headings []*ast.Heading, totalLines int) {
 		}
 	}
 }
+
+// validateFilePrelude returns E007 diagnostics for any file-level @import/@const/@let
+// directives that appear after the body start (first @doc/@template/heading).
+// Section-scope @const/@let inside a heading scope (line > firstHeadingLine) are allowed.
+func validateFilePrelude(directives []ast.Directive, headings []*ast.Heading) []ast.Diagnostic {
+	bodyStart := -1
+	for _, d := range directives {
+		if d.Kind == ast.DirectiveDoc || d.Kind == ast.DirectiveTemplate {
+			bodyStart = d.Position.Line
+			break
+		}
+	}
+	firstHeadingLine := -1
+	if len(headings) > 0 {
+		firstHeadingLine = headings[0].Position.Line
+		if bodyStart < 0 || firstHeadingLine < bodyStart {
+			bodyStart = firstHeadingLine
+		}
+	}
+	if bodyStart < 0 {
+		return nil
+	}
+
+	var diags []ast.Diagnostic
+	for _, d := range directives {
+		if d.Kind != ast.DirectiveImport && d.Kind != ast.DirectiveConst && d.Kind != ast.DirectiveLet {
+			continue
+		}
+		if d.Position.Line <= bodyStart {
+			continue // prelude — fine
+		}
+		if firstHeadingLine > 0 && d.Position.Line > firstHeadingLine {
+			continue // section-scope — fine
+		}
+		diags = append(diags, ast.Diagnostic{
+			Severity: ast.SeverityError,
+			Code:     "E007",
+			Message:  fmt.Sprintf("file-level declaration after body start: @%s must be in the prelude (before first @doc/@template/heading)", directiveKindName(d.Kind)),
+			Range:    ast.Range{Start: d.Position, End: d.Position},
+		})
+	}
+	return diags
+}
+

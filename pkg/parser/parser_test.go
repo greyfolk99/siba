@@ -107,9 +107,9 @@ func TestGenerateSlug(t *testing.T) {
 // TestParseDocument verifies that ParseDocument produces a complete Document with the
 // correct name, variables, template references, heading tree, and zero diagnostics.
 func TestParseDocument(t *testing.T) {
-	source := `<!-- @doc payment-api -->
-<!-- @const service-name = "payment-api" -->
+	source := `<!-- @const service-name = "payment-api" -->
 <!-- @const version = "2.1.0" -->
+<!-- @doc payment-api -->
 
 # Payment API
 
@@ -494,5 +494,54 @@ func TestParseDoc_ExtendsConflict(t *testing.T) {
 	}
 	if !hasErr {
 		t.Error("expected E075 for conflicting extends declarations")
+	}
+}
+
+// TestPrelude_LetAfterHeading verifies that a file-level @let after the body start
+// (first @doc/@template/heading) raises E007.
+func TestPrelude_LetAfterHeading(t *testing.T) {
+	source := `<!-- @doc x -->
+<!-- @let bad = 1 -->
+# X
+text`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E007" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E007 for file-level @let after body start")
+	}
+}
+
+// TestPrelude_ConstBeforeDoc_OK verifies that @const before @doc is fine.
+func TestPrelude_ConstBeforeDoc_OK(t *testing.T) {
+	source := `<!-- @import a from ./a.md -->
+<!-- @const greeting = "hi" -->
+<!-- @doc x -->
+# X`
+	doc := ParseDocument("test.md", source)
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E007" {
+			t.Errorf("unexpected E007: %v", d)
+		}
+	}
+}
+
+// TestPrelude_LetInsideHeadingScope_OK verifies that @let inside a heading scope
+// (section-scope, i.e., line > firstHeadingLine) is allowed and does NOT raise E007.
+func TestPrelude_LetInsideHeadingScope_OK(t *testing.T) {
+	source := `<!-- @doc x -->
+# X
+## Section
+<!-- @let inner = 1 -->
+{{inner}}`
+	doc := ParseDocument("test.md", source)
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E007" {
+			t.Errorf("unexpected E007 for section-scope @let: %v", d)
+		}
 	}
 }
