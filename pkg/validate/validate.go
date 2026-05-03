@@ -12,9 +12,12 @@ import (
 )
 
 // ValidateDocument runs all validation passes on a single document.
-// Returns diagnostics from scope building, reference resolution, and template validation.
+// Returns diagnostics from parsing, scope building, reference resolution, and
+// template validation — combined so callers see one complete picture.
 func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnostic {
-	var diags []ast.Diagnostic
+	// Start with diagnostics produced during parsing (E007 prelude, E022/E023/E024
+	// reference rules, I001/I002 deprecation/style, E075 extends conflict, ...).
+	diags := append([]ast.Diagnostic{}, doc.Diagnostics...)
 
 	// 0. Resolve template once (reuse for inheritance + contract validation)
 	var tmpl *ast.Document

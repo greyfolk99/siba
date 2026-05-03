@@ -509,8 +509,6 @@ func runCheckWorkspace(jsonMode bool) {
 	var files []JSONCheckResult
 	for path, doc := range ws.DocsByPath {
 		diags := fileDiags[path]
-		// include parser diagnostics
-		diags = append(diags, doc.Diagnostics...)
 
 		errCount := 0
 		warnCount := 0
