@@ -666,3 +666,42 @@ func TestParseLink_EmptyAlias(t *testing.T) {
 		}
 	}
 }
+
+// TestSingleDocPerFile_TwoTemplates verifies that two @template declarations
+// in a single file raise E008 (spec-v5: one outer doc/template per file).
+func TestSingleDocPerFile_TwoTemplates(t *testing.T) {
+	source := `<!-- @template Employee -->
+# Employee
+
+<!-- @template Report -->
+# Report`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E008" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E008 for two @template in single file")
+	}
+}
+
+// TestSingleDocPerFile_TwoDocs verifies the same rule for two @doc declarations.
+func TestSingleDocPerFile_TwoDocs(t *testing.T) {
+	source := `<!-- @doc Alice -->
+# Alice
+
+<!-- @doc Bob -->
+# Bob`
+	doc := ParseDocument("test.md", source)
+	hasErr := false
+	for _, d := range doc.Diagnostics {
+		if d.Code == "E008" {
+			hasErr = true
+		}
+	}
+	if !hasErr {
+		t.Error("expected E008 for two @doc in single file")
+	}
+}
