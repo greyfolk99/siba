@@ -115,6 +115,11 @@ func ParseDocument(path string, source string) *ast.Document {
 		doc.Diagnostics = append(doc.Diagnostics, *diag)
 	}
 
+	// E008: single entry per file (spec-v5)
+	if diag := validateSingleEntry(doc.Directives); diag != nil {
+		doc.Diagnostics = append(doc.Diagnostics, *diag)
+	}
+
 	// Validate @import comes before @doc/@template
 	if diag := validateImportOrder(doc.Directives); diag != nil {
 		doc.Diagnostics = append(doc.Diagnostics, *diag)
@@ -387,6 +392,38 @@ func validateDocTemplateExclusive(directives []ast.Directive) *ast.Diagnostic {
 			Severity: ast.SeverityError,
 			Code:     "E001",
 			Message:  "@doc and @template are mutually exclusive",
+		}
+	}
+	return nil
+}
+
+// validateSingleEntry enforces spec-v5: at most one @doc OR one @template per file.
+// Nested structure within an entry is expressed via heading hierarchy + #symbol /
+// /namespace, not by stacking directives.
+func validateSingleEntry(directives []ast.Directive) *ast.Diagnostic {
+	docCount := 0
+	tmplCount := 0
+	var secondPos ast.Position
+	for _, d := range directives {
+		switch d.Kind {
+		case ast.DirectiveDoc:
+			docCount++
+			if docCount == 2 {
+				secondPos = d.Position
+			}
+		case ast.DirectiveTemplate:
+			tmplCount++
+			if tmplCount == 2 {
+				secondPos = d.Position
+			}
+		}
+	}
+	if docCount > 1 || tmplCount > 1 {
+		return &ast.Diagnostic{
+			Severity: ast.SeverityError,
+			Code:     "E008",
+			Message:  "only one @doc or @template per file (spec-v5); use heading hierarchy + #symbol for nested structure",
+			Range:    ast.Range{Start: secondPos, End: secondPos},
 		}
 	}
 	return nil
