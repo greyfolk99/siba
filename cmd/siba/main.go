@@ -19,6 +19,50 @@ import (
 )
 
 // hasFlag checks if a flag is present in os.Args
+// resolveSeverityLevel returns the maximum severity to print (lower is more
+// severe). Default is SeverityInfo so I001/I002 etc. show up. -vv adds Hint.
+// -q drops to SeverityError. -v / --verbose is an alias for the default.
+func resolveSeverityLevel() ast.Severity {
+	if hasFlag("-vv") {
+		return ast.SeverityHint
+	}
+	if hasFlag("-q") || hasFlag("--quiet") {
+		return ast.SeverityError
+	}
+	return ast.SeverityInfo
+}
+
+// filterBySeverity drops diagnostics whose severity is less severe than max.
+// (Severity values: Error=0, Warning=1, Info=2, Hint=3 — lower is more severe.)
+func filterBySeverity(diags []ast.Diagnostic, max ast.Severity) []ast.Diagnostic {
+	out := diags[:0]
+	for _, d := range diags {
+		if d.Severity <= max {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// printDiagnostic emits a colored single-line diagnostic. file may be ""
+// (single-file check) or a path prefix (workspace-level check).
+func printDiagnostic(d ast.Diagnostic, file string) {
+	prefix := ""
+	if file != "" {
+		prefix = file + ": "
+	}
+	switch d.Severity {
+	case ast.SeverityError:
+		fmt.Fprintf(os.Stderr, "\033[31merror\033[0m[%s] %s%s (line %d)\n", d.Code, prefix, d.Message, d.Range.Start.Line)
+	case ast.SeverityWarning:
+		fmt.Fprintf(os.Stderr, "\033[33mwarn\033[0m[%s] %s%s (line %d)\n", d.Code, prefix, d.Message, d.Range.Start.Line)
+	case ast.SeverityInfo:
+		fmt.Fprintf(os.Stderr, "\033[36minfo\033[0m[%s] %s%s (line %d)\n", d.Code, prefix, d.Message, d.Range.Start.Line)
+	case ast.SeverityHint:
+		fmt.Fprintf(os.Stderr, "\033[2mhint\033[0m[%s] %s%s (line %d)\n", d.Code, prefix, d.Message, d.Range.Start.Line)
+	}
+}
+
 func hasFlag(flag string) bool {
 	for _, arg := range os.Args {
 		if arg == flag {
@@ -142,11 +186,12 @@ func main() {
 	case "export":
 		runExport(jsonMode)
 	case "check":
-		checkArgs := argsWithout(2, "--json")
+		checkArgs := argsWithout(2, "--json", "-v", "--verbose", "-vv", "-q", "--quiet")
+		level := resolveSeverityLevel()
 		if len(checkArgs) == 0 {
-			runCheckWorkspace(jsonMode)
+			runCheckWorkspace(jsonMode, level)
 		} else {
-			runCheck(checkArgs[0], jsonMode)
+			runCheck(checkArgs[0], jsonMode, level)
 		}
 
 	// Management
@@ -400,7 +445,7 @@ func runExport(jsonMode bool) {
 	}
 }
 
-func runCheck(path string, jsonMode bool) {
+func runCheck(path string, jsonMode bool, level ast.Severity) {
 	source, err := os.ReadFile(path)
 	if err != nil {
 		if jsonMode {
@@ -419,8 +464,8 @@ func runCheck(path string, jsonMode bool) {
 	if wsErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: cannot load workspace: %v\n", wsErr)
 	}
-	allDiags := doc.Diagnostics
-	allDiags = append(allDiags, validate.ValidateDocument(doc, ws)...)
+	allDiags := validate.ValidateDocument(doc, ws)
+	allDiags = filterBySeverity(allDiags, level)
 
 	errorCount := 0
 	warnCount := 0
@@ -463,12 +508,7 @@ func runCheck(path string, jsonMode bool) {
 	}
 
 	for _, d := range allDiags {
-		switch d.Severity {
-		case ast.SeverityError:
-			fmt.Fprintf(os.Stderr, "\033[31merror\033[0m[%s]: %s (line %d)\n", d.Code, d.Message, d.Range.Start.Line)
-		case ast.SeverityWarning:
-			fmt.Fprintf(os.Stderr, "\033[33mwarn\033[0m[%s]: %s (line %d)\n", d.Code, d.Message, d.Range.Start.Line)
-		}
+		printDiagnostic(d, "")
 	}
 
 	if errorCount == 0 && warnCount == 0 {
@@ -488,7 +528,7 @@ func runCheck(path string, jsonMode bool) {
 	}
 }
 
-func runCheckWorkspace(jsonMode bool) {
+func runCheckWorkspace(jsonMode bool, level ast.Severity) {
 	cwd := mustGetwd()
 	ws, err := workspace.LoadWorkspace(cwd)
 	if err != nil {
@@ -501,6 +541,10 @@ func runCheckWorkspace(jsonMode bool) {
 	}
 
 	fileDiags, wsDiags := validate.ValidateWorkspace(ws)
+	for path, ds := range fileDiags {
+		fileDiags[path] = filterBySeverity(ds, level)
+	}
+	wsDiags = filterBySeverity(wsDiags, level)
 	allFileDiags := validate.AllDiagnostics(fileDiags, nil)
 
 	totalErrors := 0
@@ -577,12 +621,7 @@ func runCheckWorkspace(jsonMode bool) {
 
 	// text output
 	for _, d := range allFileDiags {
-		switch d.Severity {
-		case ast.SeverityError:
-			fmt.Fprintf(os.Stderr, "\033[31merror\033[0m[%s] %s: %s (line %d)\n", d.Code, d.File, d.Message, d.Range.Start.Line)
-		case ast.SeverityWarning:
-			fmt.Fprintf(os.Stderr, "\033[33mwarn\033[0m[%s] %s: %s (line %d)\n", d.Code, d.File, d.Message, d.Range.Start.Line)
-		}
+		printDiagnostic(d, d.File)
 	}
 	for _, d := range wsDiags {
 		fmt.Fprintf(os.Stderr, "\033[31merror\033[0m[%s]: %s\n", d.Code, d.Message)
