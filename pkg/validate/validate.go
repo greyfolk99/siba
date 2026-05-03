@@ -18,6 +18,7 @@ func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnost
 	// Start with diagnostics produced during parsing (E007 prelude, E022/E023/E024
 	// reference rules, I001/I002 deprecation/style, E075 extends conflict, ...).
 	diags := append([]ast.Diagnostic{}, doc.Diagnostics...)
+	diags = applyObsidianCompat(diags, ws)
 
 	// 0. Resolve template once (reuse for inheritance + contract validation)
 	var tmpl *ast.Document
@@ -129,6 +130,22 @@ func ValidateWorkspace(ws *workspace.Workspace) (map[string][]ast.Diagnostic, []
 	wsDiags = append(wsDiags, refs.DetectEmbedCycles(graphs.Embed)...)
 
 	return fileDiags, wsDiags
+}
+
+// applyObsidianCompat drops E023/E024 diagnostics when the workspace opts into
+// Obsidian-style wikilink behavior via [obsidian] compat = true.
+func applyObsidianCompat(diags []ast.Diagnostic, ws *workspace.Workspace) []ast.Diagnostic {
+	if ws == nil || ws.Config == nil || !ws.Config.Obsidian.Compat {
+		return diags
+	}
+	out := diags[:0]
+	for _, d := range diags {
+		if d.Code == "E023" || d.Code == "E024" {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // HasErrors checks if any diagnostics are errors

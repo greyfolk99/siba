@@ -13,10 +13,11 @@ import (
 
 // ModuleConfig represents module.toml
 type ModuleConfig struct {
-	Module       ModuleInfo           `toml:"module"`
-	Dependencies map[string]string    `toml:"dependencies"`
-	Scripts      map[string]string    `toml:"scripts"`
-	Render       RenderConfig         `toml:"render"`
+	Module       ModuleInfo        `toml:"module"`
+	Dependencies map[string]string `toml:"dependencies"`
+	Scripts      map[string]string `toml:"scripts"`
+	Render       RenderConfig      `toml:"render"`
+	Obsidian     ObsidianConfig    `toml:"obsidian"`
 }
 
 type ModuleInfo struct {
@@ -26,6 +27,14 @@ type ModuleInfo struct {
 
 type RenderConfig struct {
 	Formats []string `toml:"formats"`
+}
+
+// ObsidianConfig opts the workspace into Obsidian-style wikilink behavior.
+// When Compat is true, raw paths and unknown aliases inside [[]] / {{}} (E023,
+// E024) are silenced — letting users keep Obsidian vault syntax that doesn't
+// translate to siba aliases.
+type ObsidianConfig struct {
+	Compat bool `toml:"compat"`
 }
 
 // Workspace represents a siba workspace
