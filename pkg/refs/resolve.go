@@ -242,11 +242,13 @@ func resolveSymbolRef(ref ast.Reference, currentDoc *ast.Document, ws *workspace
 	}
 }
 
-// ValidateReferences validates all references in a document
+// ValidateReferences validates all references in a document. Link refs ([[]]) are
+// skipped here — their alias lookup is handled by parser.validateRefsAreAliasOnly,
+// and per spec-v4 they are pure markdown-link compilation, never evaluated.
 func ValidateReferences(doc *ast.Document, rootScope *scope.Scope, ws *workspace.Workspace) []ast.Diagnostic {
 	var diags []ast.Diagnostic
 	for _, ref := range doc.References {
-		if ref.IsEscaped {
+		if ref.IsEscaped || ref.IsLink {
 			continue
 		}
 		_, d := ResolveReference(ref, doc, rootScope, ws)
