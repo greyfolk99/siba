@@ -1,4 +1,6 @@
-<!-- @doc webapp-api extends project-api -->
+<!-- @import tmpl from ./project-tmpl.md -->
+
+<!-- @doc webapp-api extends tmpl#project-api -->
 <!-- @const base-url = "/api/v1" -->
 
 # WebApp API
