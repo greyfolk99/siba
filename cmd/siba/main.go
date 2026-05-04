@@ -22,6 +22,10 @@ import (
 )
 
 // hasFlag checks if a flag is present in os.Args
+// sibaVersion is overridable at build time via -ldflags "-X main.sibaVersion=...".
+// Default reflects the current development line — bump on release.
+var sibaVersion = "v0.3.1-alpha.1"
+
 // resolveSeverityLevel returns the maximum severity to print (lower is more
 // severe). Default is SeverityInfo so I001/I002 etc. show up. -vv adds Hint.
 // -q drops to SeverityError. -v / --verbose is an alias for the default.
@@ -225,7 +229,7 @@ func main() {
 			runHelp("")
 		}
 	case "version":
-		fmt.Println("siba v0.2.0")
+		fmt.Printf("siba %s\n", sibaVersion)
 	default:
 		printUsage()
 		os.Exit(2)
