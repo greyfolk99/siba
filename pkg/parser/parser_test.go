@@ -705,3 +705,16 @@ func TestSingleDocPerFile_TwoDocs(t *testing.T) {
 		t.Error("expected E008 for two @doc in single file")
 	}
 }
+
+// TestParseDirectives_FencedCodeIgnored verifies that directives inside fenced
+// code blocks are documentation, not real directives.
+func TestParseDirectives_FencedCodeIgnored(t *testing.T) {
+	source := "<!-- @doc Real -->\n# Title\n\n```\n<!-- @doc Fake -->\n```\n"
+	directives := ParseDirectives(source)
+	if len(directives) != 1 {
+		t.Fatalf("expected 1 directive, got %d: %+v", len(directives), directives)
+	}
+	if directives[0].Args != "Real" {
+		t.Errorf("expected 'Real' got %q", directives[0].Args)
+	}
+}

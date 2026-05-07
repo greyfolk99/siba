@@ -511,8 +511,18 @@ func parseAccessLevel(s string) ast.AccessLevel {
 func extractReferences(source string) []ast.Reference {
 	var refs []ast.Reference
 	lines := strings.Split(source, "\n")
+	inFence := false
 
 	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// fenced code blocks — references inside are documentation, not real
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		// skip directive lines
 		if IsDirectiveLine(line) {
 			continue

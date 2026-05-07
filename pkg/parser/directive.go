@@ -10,13 +10,24 @@ import (
 var directiveRe = regexp.MustCompile(`<!--\s*@(\w+)\s*(.*?)\s*-->`)
 var multilineDirectiveRe = regexp.MustCompile(`(?s)<!--\s*@(\w+)\s*(.*?)\s*-->`)
 
-// ParseDirectives extracts all <!-- @... --> directives from source
+// ParseDirectives extracts all <!-- @... --> directives from source. Fenced
+// code blocks (``` ... ```) and indented code blocks are skipped — `<!-- @x -->`
+// inside a code block is documentation, not a directive.
 func ParseDirectives(source string) []ast.Directive {
 	var directives []ast.Directive
 	lines := strings.Split(source, "\n")
 
+	inFence := false
 	for i := 0; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])
+		// fenced code block tracking — toggle on every line that starts with ``` or ~~~
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		matches := directiveRe.FindStringSubmatch(trimmed)
 		if matches == nil {
 			// handle multi-line directives (e.g., @const with arrays/objects)
