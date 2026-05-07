@@ -91,20 +91,37 @@ func LoadWorkspace(root string) (*Workspace, error) {
 	return w, nil
 }
 
-// DiscoverDocuments finds all .md files recursively, skipping _export and .siba dirs
+// DiscoverDocuments finds all .md files recursively, skipping directories
+// that are conventionally non-source: _export, _siba-cache, node_modules,
+// hidden dirs (.git, .obsidian, ...), and per-doc archives (`old/`, `dialog/`).
+// "old" and "dialog" only match when nested under a memory/ or agents/ path —
+// avoiding false matches on a top-level project named "old".
 func DiscoverDocuments(root string) []string {
 	var paths []string
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		// skip hidden dirs, _export, node_modules (but never skip the root itself)
+		if !info.IsDir() {
+			if strings.HasSuffix(info.Name(), ".md") {
+				paths = append(paths, path)
+			}
+			return nil
+		}
+		// never skip the root itself
+		if path == root {
+			return nil
+		}
 		name := info.Name()
-		if info.IsDir() && path != root && (strings.HasPrefix(name, ".") || name == "_export" || name == "node_modules") {
+		if strings.HasPrefix(name, ".") || name == "_export" || name == "_siba-cache" || name == "node_modules" {
 			return filepath.SkipDir
 		}
-		if !info.IsDir() && strings.HasSuffix(name, ".md") {
-			paths = append(paths, path)
+		// per-agent archive dirs — only skip when we're already inside an agent-like context
+		if (name == "old" || name == "dialog") && strings.Contains(path, "/memory/") {
+			return filepath.SkipDir
+		}
+		if name == "dialog" && strings.Contains(path, "/agents/") {
+			return filepath.SkipDir
 		}
 		return nil
 	})
