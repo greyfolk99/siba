@@ -18,6 +18,14 @@ type ModuleConfig struct {
 	Scripts      map[string]string `toml:"scripts"`
 	Render       RenderConfig      `toml:"render"`
 	Obsidian     ObsidianConfig    `toml:"obsidian"`
+	Diagnostics  DiagnosticsConfig `toml:"diagnostics"`
+}
+
+// DiagnosticsConfig lets the workspace silence specific diagnostic codes
+// without dropping a whole severity tier. Handy for convention-only codes
+// (I002 PascalCase, I001 deprecated extends) that don't apply to a project.
+type DiagnosticsConfig struct {
+	Suppress []string `toml:"suppress"`
 }
 
 type ModuleInfo struct {

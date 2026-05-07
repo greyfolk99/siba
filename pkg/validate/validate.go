@@ -19,6 +19,7 @@ func ValidateDocument(doc *ast.Document, ws *workspace.Workspace) []ast.Diagnost
 	// reference rules, I001/I002 deprecation/style, E075 extends conflict, ...).
 	diags := append([]ast.Diagnostic{}, doc.Diagnostics...)
 	diags = applyObsidianCompat(diags, ws)
+	diags = applyDiagnosticsSuppress(diags, ws)
 
 	// 0. Resolve template once (reuse for inheritance + contract validation)
 	var tmpl *ast.Document
@@ -141,6 +142,26 @@ func applyObsidianCompat(diags []ast.Diagnostic, ws *workspace.Workspace) []ast.
 	out := diags[:0]
 	for _, d := range diags {
 		if d.Code == "E023" || d.Code == "E024" {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// applyDiagnosticsSuppress drops diagnostics whose code is listed in
+// [diagnostics] suppress in module.toml.
+func applyDiagnosticsSuppress(diags []ast.Diagnostic, ws *workspace.Workspace) []ast.Diagnostic {
+	if ws == nil || ws.Config == nil || len(ws.Config.Diagnostics.Suppress) == 0 {
+		return diags
+	}
+	suppressed := make(map[string]bool, len(ws.Config.Diagnostics.Suppress))
+	for _, code := range ws.Config.Diagnostics.Suppress {
+		suppressed[code] = true
+	}
+	out := diags[:0]
+	for _, d := range diags {
+		if suppressed[d.Code] {
 			continue
 		}
 		out = append(out, d)
