@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -566,6 +567,31 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 				}
 			}
 			return match
+		}
+
+		// alias — full imported doc embed (no # no .)
+		// {{soul}} → SOUL.md 의 rendered body 통째 인라인.
+		if !strings.Contains(inner, ".") && ip.ws != nil && ip.doc != nil {
+			for _, imp := range ip.doc.Imports {
+				if imp.Alias != inner {
+					continue
+				}
+				targetDoc := ip.ws.ResolveImportDoc(imp.Path, ip.doc.Path)
+				if targetDoc == nil {
+					return match
+				}
+				docKey := "embed:" + targetDoc.Path
+				if err := ip.ctx.Enter(docKey); err != nil {
+					return match // cycle — leave the {{alias}} literal
+				}
+				defer ip.ctx.Leave(docKey)
+				var buf bytes.Buffer
+				if err := StreamRender(targetDoc, &buf, ip.ws); err != nil {
+					return match
+				}
+				// strip leading + trailing whitespace so the embed sits cleanly
+				return strings.TrimSpace(buf.String())
+			}
 		}
 
 		// cycle detection for variables
