@@ -586,7 +586,7 @@ func (ip *interpreter) substituteVars(line string, currentScope *scope.Scope) st
 				}
 				defer ip.ctx.Leave(docKey)
 				var buf bytes.Buffer
-				if err := StreamRender(targetDoc, &buf, ip.ws); err != nil {
+				if err := StreamRenderWithContext(targetDoc, &buf, ip.ctx, ip.ws); err != nil {
 					return match
 				}
 				// strip leading + trailing whitespace so the embed sits cleanly

@@ -159,9 +159,10 @@ func DiscoverDocuments(root string) []string {
 	return out
 }
 
-// IsTemplate reports whether the given workspace-relative or absolute path
-// points at a `*.siba.md` source file (vs. a plain `.md`).
-func IsTemplate(path string) bool {
+// IsBuildSource reports whether the given path is a `*.siba.md` template
+// file that `siba build` should render to its sibling `.md`. Distinct from
+// ast.Document.IsTemplate (which means "@template directive present").
+func IsBuildSource(path string) bool {
 	return strings.HasSuffix(path, ".siba.md")
 }
 

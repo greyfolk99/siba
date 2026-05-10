@@ -175,7 +175,12 @@ func NewIncrementalGraphs() *IncrementalGraphs {
 // BuildIncrementalGraphs walks every document once and populates all three
 // graphs. Equivalent to the existing BuildDependencyGraphs but with reverse
 // indexes for O(1) backlink queries and O(deg) updates.
+//
+// A nil workspace returns an empty graph rather than panicking.
 func BuildIncrementalGraphs(ws *workspace.Workspace) *IncrementalGraphs {
+	if ws == nil {
+		return NewIncrementalGraphs()
+	}
 	g := NewIncrementalGraphs()
 	for _, doc := range ws.DocsByPath {
 		g.UpdateDoc(ws, doc)
@@ -184,8 +189,12 @@ func BuildIncrementalGraphs(ws *workspace.Workspace) *IncrementalGraphs {
 }
 
 // UpdateDoc refreshes every edge originating at doc. Call this from a file
-// watcher (or LSP didSave) after re-parsing the document.
+// watcher (or LSP didSave) after re-parsing the document. No-op if either
+// argument is nil.
 func (g *IncrementalGraphs) UpdateDoc(ws *workspace.Workspace, doc *ast.Document) {
+	if ws == nil || doc == nil {
+		return
+	}
 	id := docID(doc)
 
 	// extends — single edge max
@@ -223,8 +232,11 @@ func (g *IncrementalGraphs) UpdateDoc(ws *workspace.Workspace, doc *ast.Document
 	g.Link.UpdateOutgoing(id, linkTargets)
 }
 
-// RemoveDoc drops every trace of doc from all three graphs.
+// RemoveDoc drops every trace of doc from all three graphs. No-op if doc nil.
 func (g *IncrementalGraphs) RemoveDoc(doc *ast.Document) {
+	if doc == nil {
+		return
+	}
 	id := docID(doc)
 	g.Extends.RemoveNode(id)
 	g.Embed.RemoveNode(id)
@@ -272,7 +284,15 @@ func DetectCyclesIncremental(g *IncrementalGraph, code, label string) []ast.Diag
 			if !visited[next] {
 				dfs(next, append(append([]string{}, path...), next))
 			} else if inStack[next] {
-				cycle := append(append([]string{}, path...), next)
+				// trim path to the cycle proper — drop nodes before next reappears
+				cycleStart := 0
+				for i, n := range path {
+					if n == next {
+						cycleStart = i
+						break
+					}
+				}
+				cycle := append(append([]string{}, path[cycleStart:]...), next)
 				diags = append(diags, ast.Diagnostic{
 					Severity: ast.SeverityError,
 					Code:     code,

@@ -433,7 +433,7 @@ func runBuild(target string, jsonMode bool) {
 	var results []result
 
 	for path, doc := range ws.DocsByPath {
-		if !workspace.IsTemplate(path) {
+		if !workspace.IsBuildSource(path) {
 			continue
 		}
 		if target != "" {
@@ -445,6 +445,14 @@ func runBuild(target string, jsonMode bool) {
 		}
 		out := workspace.RenderedPath(path)
 		outFull := filepath.Join(ws.Root, out)
+		// Refuse to follow symlinks that would write outside ws.Root.
+		if realDir, derr := filepath.EvalSymlinks(filepath.Dir(outFull)); derr == nil {
+			rootReal, _ := filepath.EvalSymlinks(ws.Root)
+			if !strings.HasPrefix(realDir+string(filepath.Separator), rootReal+string(filepath.Separator)) && realDir != rootReal {
+				results = append(results, result{Source: path, Output: out, Error: "refuses to write outside workspace root"})
+				continue
+			}
+		}
 		var buf bytes.Buffer
 		if rerr := render.StreamRender(doc, &buf, ws); rerr != nil {
 			results = append(results, result{Source: path, Output: out, Error: rerr.Error()})

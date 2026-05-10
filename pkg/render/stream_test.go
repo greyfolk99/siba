@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/greyfolk99/siba/pkg/ast"
 	"github.com/greyfolk99/siba/pkg/parser"
+	"github.com/greyfolk99/siba/pkg/workspace"
 )
 
 // TestBasicVariableSubstitution verifies that {{var}} references are replaced
@@ -296,5 +298,32 @@ Literal: \[[alice]]`
 	}
 	if strings.Contains(out, "[alice](./alice.md)") {
 		t.Errorf("escaped link should not have been compiled, got:\n%s", out)
+	}
+}
+
+// TestStreamRender_CrossDocEmbedCycle verifies {{alias}} full-doc embed
+// terminates when A and B mutually embed each other — second-level recursion
+// must use the shared EvalContext to detect the cycle and leave the inner
+// {{alias}} as a literal. Without the fix this panics with stack overflow.
+func TestStreamRender_CrossDocEmbedCycle(t *testing.T) {
+	srcA := "<!-- @import b from ./B.siba.md -->\n<!-- @doc A -->\n# A\n\n{{b}}\n"
+	srcB := "<!-- @import a from ./A.siba.md -->\n<!-- @doc B -->\n# B\n\n{{a}}\n"
+	docA := parser.ParseDocument("A.siba.md", srcA)
+	docB := parser.ParseDocument("B.siba.md", srcB)
+
+	ws := &workspace.Workspace{
+		Root:       ".",
+		Documents:  map[string]*ast.Document{"A": docA, "B": docB},
+		DocsByPath: map[string]*ast.Document{"A.siba.md": docA, "B.siba.md": docB},
+		Templates:  map[string]*ast.Document{},
+	}
+
+	var buf bytes.Buffer
+	if err := StreamRender(docA, &buf, ws); err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "{{a}}") {
+		t.Errorf("expected {{a}} literal at depth-2 (cycle detected), got:\n%s", out)
 	}
 }
